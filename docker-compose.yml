@@ -54,7 +54,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-		VITE_BASE_PATH: ${VITE_BASE_PATH}
+        VITE_BASE_PATH: ${VITE_BASE_PATH}
         VITE_API_URL: ${VITE_API_URL}
     restart: unless-stopped
     ports:
