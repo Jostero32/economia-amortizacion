@@ -1,0 +1,14 @@
+# Dependencias globales
+node_modules/
+dist/
+*.log
+
+# Entornos
+.env
+.env.local
+
+# SO e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

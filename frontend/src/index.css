@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #001026;
+  --color-secondary: #0050cc;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #f8f9ff;
+    color: #0d1c2f;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Mandato de cifras tabulares y cero cruzado para cifras financieras */
+  .font-numeric-data, .font-numeric-hero, table td, table th {
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Material Symbols alignment and sizing */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+  line-height: 1;
+  display: inline-block;
+}
+
+/* Custom modern institutional scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eff4ff;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccdbf4;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #778db2;
+}

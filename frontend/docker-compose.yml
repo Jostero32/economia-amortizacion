@@ -1,0 +1,12 @@
+services:
+  # Cliente Frontend React / Vite / Tailwind CSS
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finanecuador_frontend_app
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8080/api
+    ports:
+      - "5173:5173"

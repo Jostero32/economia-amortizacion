@@ -1,0 +1,60 @@
+services:
+  # 1. Base de datos PostgreSQL para el Backend
+  db:
+    image: postgres:16-alpine
+    container_name: finanecuador_backend_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finanecuador
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d finanecuador"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend_net
+
+  # 2. Servidor Backend Express / Sequelize / Model-First
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finanecuador_backend_api
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      NODE_ENV: development
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: finanecuador
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_SYNC_ALTER: "false"
+      JWT_SECRET: development-secret
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend_net
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  backend_net:
+    driver: bridge
