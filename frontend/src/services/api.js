@@ -4,7 +4,12 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
 export const resolveApiAssetUrl = (assetPath) => {
   if (!assetPath || /^(https?:|data:|blob:)/i.test(assetPath)) return assetPath;
-  if (!assetPath.startsWith('/uploads/')) return assetPath;
+  if (!assetPath.startsWith('/uploads/')) {
+    // Archivos de /public: anteponer el base de Vite (p. ej. /economia/simulador/)
+    const base = import.meta.env.BASE_URL;
+    if (!assetPath.startsWith('/') || assetPath.startsWith(base)) return assetPath;
+    return `${base}${assetPath.slice(1)}`;
+  }
 
   const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, '');
   return `${apiOrigin}${assetPath}`;
