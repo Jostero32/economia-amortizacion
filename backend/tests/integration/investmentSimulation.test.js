@@ -71,6 +71,22 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
     expect(res.body.success).toBe(false);
   });
 
+  test('rechaza simulación con fecha de inicio en el pasado (Código 400)', async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const res = await request(app)
+      .post('/api/simulations/investments')
+      .send({
+        investmentProductId: sampleInvProduct.id,
+        amount: 5000,
+        termDays: 180,
+        startDate: yesterday,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/fecha de inicio debe ser hoy o una fecha futura/i);
+  });
+
   test('GET /api/simulations/investments/:id recupera los datos de la inversión calculada', async () => {
     const simRes = await request(app)
       .post('/api/simulations/investments')
