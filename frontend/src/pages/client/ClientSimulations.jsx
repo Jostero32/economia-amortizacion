@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { clientService } from '../../services/api';
+import { clientService, publicService } from '../../services/api';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -29,6 +29,10 @@ export default function ClientSimulations() {
 
   const formatUSD = (val) =>
     new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const handleDownloadPdf = (simulationId) => {
+    const pdfUrl = publicService.getCreditSimulationPdfUrl(simulationId);
+    window.open(pdfUrl, '_blank');
+  };
 
   if (loading) {
     return <LoadingState message="Cargando historial de simulaciones..." />;
@@ -115,11 +119,16 @@ export default function ClientSimulations() {
                   {formatUSD(sim.totalPagar)}
                 </td>
                 <td className="py-3 px-4 text-right">
-                  <Link to={`/creditos/simulador/${sim.id}`}>
-                    <Button variant="outline" size="sm" iconName="visibility">
-                      Ver
+                  <div className="inline-flex items-center gap-2">
+                    <Link to={`/creditos/simulador/${sim.id}`}>
+                      <Button variant="outline" size="sm" iconName="visibility">
+                        Ver
+                      </Button>
+                    </Link>
+                    <Button variant="ghost" size="sm" iconName="download" onClick={() => handleDownloadPdf(sim.id)}>
+                      PDF
                     </Button>
-                  </Link>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -210,7 +210,7 @@ export default function ChargesConfig() {
               onChange={(e) => setFormData((p) => ({ ...p, tipo: e.target.value }))}
               options={[
                 { value: 'PORCENTAJE', label: 'Porcentaje (%)' },
-                { value: 'FIJO', label: 'Valor Fijo en USD ($)' },
+                { value: 'VALOR_FIJO', label: 'Valor Fijo en USD ($)' },
               ]}
             />
 

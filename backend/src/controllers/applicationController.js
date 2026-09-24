@@ -10,6 +10,7 @@ const {
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
+const { calculateInvestment } = require('../services/investment/calculator');
 
 function generateApplicationCode(prefix) {
   const year = new Date().getFullYear();
@@ -233,8 +234,13 @@ async function createInvestmentApplication(req, res, next) {
       }
 
       tasaAplicada = product.tasa || 5.0;
-      interesEstimado = (Number(monto) * (tasaAplicada / 100) * Number(plazoDias)) / 360;
-      valorFinalEstimado = Number(monto) + interesEstimado;
+      const investmentResult = calculateInvestment({
+        amount: Number(monto),
+        termDays: Number(plazoDias),
+        annualRate: Number(tasaAplicada),
+      });
+      interesEstimado = investmentResult.interesGanado;
+      valorFinalEstimado = investmentResult.valorFinal;
     }
 
     const applicationCode = generateApplicationCode('SOL-INV');
