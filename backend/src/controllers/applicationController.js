@@ -397,6 +397,9 @@ async function createInvestmentApplication(req, res, next) {
         await simulation.update({ userId });
       }
     } else {
+      if (product.tipo === 'AHORRO_PROGRAMADO') {
+        return errorResponse(res, 'Simula tu plan de ahorro programado antes de solicitarlo.', 400);
+      }
       if (Number(monto) < Number(product.montoMinimo) || Number(monto) > Number(product.montoMaximo)) {
         return errorResponse(
           res,

@@ -29,6 +29,11 @@ const InvestmentSimulation = sequelize.define('InvestmentSimulation', {
     allowNull: false,
     comment: 'Capital invertido',
   },
+  aporteMensual: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Aporte mensual del ahorro programado (monto guarda el total aportado)',
+  },
   plazoDias: {
     type: DataTypes.INTEGER,
     allowNull: false,

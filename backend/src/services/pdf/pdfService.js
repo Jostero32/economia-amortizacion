@@ -312,7 +312,116 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
 /**
  * PDF de una simulación o solicitud de depósito a plazo fijo
  */
+/**
+ * Tabla simple con encabezado repetido en cada página
+ * @param {Array} columns - [{ header, width, align, value(row), bold }]
+ */
+function drawSimpleTable(doc, columns, items, y) {
+  const drawRow = (values, rowY, { background, bold = false, color = DARK } = {}) => {
+    if (background) doc.rect(PAGE_MARGIN, rowY - 3, CONTENT_WIDTH, 16).fill(background);
+    let x = PAGE_MARGIN;
+    columns.forEach((column, index) => {
+      doc.fillColor(color).font(bold || column.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8)
+        .text(values[index], x + 4, rowY, { width: column.width - 8, align: column.align, lineBreak: false });
+      x += column.width;
+    });
+  };
+  const drawHeaderRow = (rowY) => drawRow(columns.map((column) => column.header), rowY, { background: '#0b2545', bold: true, color: '#ffffff' });
+
+  if (y > PAGE_BOTTOM - 60) {
+    doc.addPage();
+    y = PAGE_MARGIN;
+  }
+  drawHeaderRow(y);
+  y += 18;
+  items.forEach((item, index) => {
+    if (y > PAGE_BOTTOM - 14) {
+      doc.addPage();
+      y = PAGE_MARGIN;
+      drawHeaderRow(y);
+      y += 18;
+    }
+    drawRow(columns.map((column) => column.value(item)), y, { background: index % 2 === 1 ? '#f8fafc' : null });
+    y += 15;
+  });
+  return y + 10;
+}
+
+/**
+ * PDF de un plan de ahorro programado: aportes mensuales con interés capitalizable
+ */
+function generateSavingsPlanPDF({ institution, simulation, application }, outputStream) {
+  const doc = createDocument(outputStream);
+  const color = institution?.colorSecundario || '#0369a1';
+
+  drawHeader(doc, institution, 'Ahorro programado', color);
+  const reference = application ? `Solicitud ${application.codigo}` : `Simulación ${String(simulation.id).slice(0, 8)}`;
+  let y = drawTitle(doc, application ? 'SOLICITUD DE AHORRO PROGRAMADO' : 'SIMULACIÓN DE AHORRO PROGRAMADO', reference, 115);
+
+  if (application) {
+    y = drawSectionTitle(doc, 'Datos del ahorrista', y);
+    y = drawKeyValueBox(doc, [
+      [['Nombre', `${application.nombres} ${application.apellidos}`], ['Cédula', application.cedula]],
+      [['Solicitud', application.codigo], ['Estado', STATUS_LABELS[application.estado] || application.estado]],
+    ], y);
+  }
+
+  const pagos = simulation.cronogramaPagos || [];
+  const retencion = Number(simulation.retencionIR || 0);
+  y = drawSectionTitle(doc, 'Condiciones del plan', y);
+  y = drawKeyValueBox(doc, [
+    [
+      ['Producto', simulation.product?.nombre || 'Ahorro programado'],
+      ['Aporte mensual', formatMoney(simulation.aporteMensual), true],
+      ['Número de aportes', `${pagos.length} meses`],
+      ['Primer aporte', formatDisplayDate(simulation.fechaInicio)],
+      ['Fin del plan', formatDisplayDate(simulation.fechaVencimiento)],
+    ],
+    [
+      ['Tasa nominal anual', formatPercent(simulation.tasaAnual)],
+      ['Tasa efectiva anual (TEA)', simulation.tasaEfectiva != null ? formatPercent(simulation.tasaEfectiva) : '—'],
+      ['Total aportado', formatMoney(simulation.monto)],
+      ['Intereses ganados', formatMoney(simulation.interesGanado)],
+      ['Retención Impuesto a la Renta', retencion > 0 ? `-${formatMoney(retencion)}` : 'Exento'],
+    ],
+  ], y);
+
+  doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 34).fill('#e6eeff');
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11).text('VALOR A RECIBIR AL FINAL DEL PLAN', PAGE_MARGIN + 12, y + 11);
+  doc.text(formatMoney(simulation.valorFinal), PAGE_MARGIN + 300, y + 11, { width: CONTENT_WIDTH - 312, align: 'right' });
+  y += 46;
+
+  if (pagos.length > 0) {
+    y = drawSectionTitle(doc, 'Aportes y saldo acumulado', y);
+    y = drawSimpleTable(doc, [
+      { header: 'Mes', width: 50, align: 'center', value: (pago) => String(pago.numero) },
+      { header: 'Fecha de aporte', width: 115, align: 'left', value: (pago) => formatDisplayDate(pago.fecha) },
+      { header: 'Aporte', width: 110, align: 'right', value: (pago) => formatMoney(pago.aporte) },
+      { header: 'Interés del mes', width: 110, align: 'right', value: (pago) => formatMoney(pago.interes) },
+      { header: 'Saldo', width: 130, align: 'right', value: (pago) => formatMoney(pago.saldo), bold: true },
+    ], pagos, y);
+  }
+
+  drawNote(
+    doc,
+    'CONDICIONES DE LA SIMULACIÓN',
+    'Aportes al inicio de cada mes; el saldo capitaliza intereses mensualmente con la tasa nominal anual / 12. '
+      + 'Se aplica la regla de retención del Impuesto a la Renta de los depósitos a plazo (3 % si el plan dura menos de 180 días). '
+      + 'Valores referenciales, no constituyen contrato. Proyecto académico de la materia Ingeniería Económica.',
+    y,
+    { background: '#f0fdf4', text: '#166534' }
+  );
+
+  drawPageNumbers(doc);
+  doc.end();
+}
+
 function generateInvestmentSimulationPDF({ institution, simulation, application }, outputStream) {
+  if (simulation.aporteMensual != null) {
+    generateSavingsPlanPDF({ institution, simulation, application }, outputStream);
+    return;
+  }
+
   const doc = createDocument(outputStream);
   const color = institution?.colorSecundario || '#0369a1';
 

@@ -91,6 +91,10 @@ function investmentProductRules(isUpdate) {
       .bail()
       .custom(notLessThan('plazoMinimoDias', 'El plazo máximo no puede ser menor al plazo mínimo.')),
     field('tasa').isFloat({ gt: 0, max: 100 }).withMessage('La tasa base debe ser mayor a 0 % y máximo 100 %.'),
+    body('tipo')
+      .optional()
+      .isIn(['PLAZO_FIJO', 'AHORRO_PROGRAMADO'])
+      .withMessage('El tipo de producto debe ser plazo fijo o ahorro programado.'),
     body('pagoIntereses')
       .optional()
       .isIn(['AL_VENCIMIENTO', 'MENSUAL'])

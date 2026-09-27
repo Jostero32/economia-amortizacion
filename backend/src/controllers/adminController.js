@@ -424,6 +424,7 @@ async function createInvestmentProduct(req, res, next) {
       plazoMinimoDias,
       plazoMaximoDias,
       tasa,
+      tipo,
       pagoIntereses,
       fuente,
     } = req.body;
@@ -436,6 +437,7 @@ async function createInvestmentProduct(req, res, next) {
       plazoMinimoDias,
       plazoMaximoDias,
       tasa,
+      tipo: tipo || 'PLAZO_FIJO',
       pagoIntereses: pagoIntereses || 'AL_VENCIMIENTO',
       fuente: fuente || 'Resolución Administrativa',
       fechaVigencia: todayISO(),
@@ -594,6 +596,7 @@ const INVESTMENT_PRODUCT_FIELDS = [
   'plazoMinimoDias',
   'plazoMaximoDias',
   'tasa',
+  'tipo',
   'pagoIntereses',
   'fuente',
   'activo',

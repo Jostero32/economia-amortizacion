@@ -16,6 +16,7 @@ const EMPTY_PRODUCT = {
   plazoMinimoDias: '30',
   plazoMaximoDias: '1080',
   tasa: '',
+  tipo: 'PLAZO_FIJO',
   pagoIntereses: 'AL_VENCIMIENTO',
 };
 
@@ -120,7 +121,11 @@ function ProductCard({ product, onEdit, onToggle, onChanged }) {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-[17px] font-bold text-primary">{product.nombre}</h2>
             <Badge variant={product.activo ? 'seps' : 'default'} size="sm">{product.activo ? 'Activo' : 'Inactivo'}</Badge>
-            <Badge variant="bce" size="sm">{PAYMENT_LABELS[product.pagoIntereses] || PAYMENT_LABELS.AL_VENCIMIENTO}</Badge>
+            <Badge variant="bce" size="sm">
+              {product.tipo === 'AHORRO_PROGRAMADO'
+                ? 'Ahorro programado'
+                : PAYMENT_LABELS[product.pagoIntereses] || PAYMENT_LABELS.AL_VENCIMIENTO}
+            </Badge>
           </div>
           {product.descripcion && <p className="text-[13px] text-gray-500 mt-1 max-w-2xl">{product.descripcion}</p>}
           <p className="text-[13px] text-gray-600 mt-1">
@@ -221,6 +226,7 @@ export default function InvestmentProductsList() {
       plazoMinimoDias: String(product.plazoMinimoDias),
       plazoMaximoDias: String(product.plazoMaximoDias),
       tasa: String(Number(product.tasa)),
+      tipo: product.tipo || 'PLAZO_FIJO',
       pagoIntereses: product.pagoIntereses || 'AL_VENCIMIENTO',
     } : EMPTY_PRODUCT);
     setFieldErrors({});
@@ -314,6 +320,18 @@ export default function InvestmentProductsList() {
             {numberField('plazoMinimoDias', 'Plazo mínimo', { suffix: 'días', inputMode: 'numeric' })}
             {numberField('plazoMaximoDias', 'Plazo máximo', { suffix: 'días', inputMode: 'numeric' })}
             {numberField('tasa', 'Tasa base', { suffix: '%', inputMode: 'decimal', hint: 'Se usa si ningún tramo cubre el plazo.' })}
+            <FormInput
+              type="select"
+              label="Tipo de producto"
+              name="tipo"
+              value={formData.tipo}
+              onChange={(e) => updateField('tipo', e.target.value)}
+              options={[
+                { value: 'PLAZO_FIJO', label: 'Depósito a plazo fijo' },
+                { value: 'AHORRO_PROGRAMADO', label: 'Ahorro programado (aporte mensual)' },
+              ]}
+              hint={formData.tipo === 'AHORRO_PROGRAMADO' ? 'Los montos son del aporte mensual.' : undefined}
+            />
             <FormInput
               type="select"
               label="Pago de intereses"

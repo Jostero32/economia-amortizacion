@@ -3,7 +3,11 @@
  * Rendimiento financiero bajo la fórmula de interés simple comercial ecuatoriano (base 360 días).
  */
 
-const { calculateInvestment, resolveInvestmentRate } = require('../../src/services/investment/calculator');
+const {
+  calculateInvestment,
+  calculateProgrammedSavings,
+  resolveInvestmentRate,
+} = require('../../src/services/investment/calculator');
 const INVESTMENT_CASES = require('../fixtures/investmentCases');
 const BCE_RATES_SEPT_2026 = require('../fixtures/bceRates.sept2026');
 
@@ -128,6 +132,44 @@ describe('Cálculos de Rendimiento de Inversiones y Depósitos a Plazo Fijo (DPF
 
     test('con pago mensual la TEA es mayor que la tasa nominal', () => {
       expect(result.tasaEfectiva).toBeGreaterThan(5.09);
+    });
+  });
+
+  // =========================================================================
+  // AHORRO PROGRAMADO (anualidad anticipada con capitalización mensual)
+  // =========================================================================
+  describe('Ahorro programado', () => {
+    const plan = calculateProgrammedSavings({
+      monthlyContribution: 100,
+      termMonths: 12,
+      annualRate: 6,
+      startDate: '2026-10-31',
+    });
+
+    test('el saldo final coincide con el valor futuro de una anualidad anticipada', () => {
+      const i = 0.06 / 12;
+      const valorFuturo = 100 * ((Math.pow(1 + i, 12) - 1) / i) * (1 + i);
+      // Los intereses se redondean mes a mes: diferencia máxima de centavos
+      expect(Math.abs(plan.cronogramaPagos[11].saldo - valorFuturo)).toBeLessThan(0.05);
+      expect(plan.capital).toBe(1200);
+      expect(plan.interesGanado).toBeCloseTo(plan.cronogramaPagos[11].saldo - 1200, 2);
+    });
+
+    test('aportes mensuales el mismo día de cada mes y fin del plan un mes después del último aporte', () => {
+      expect(plan.cronogramaPagos.slice(0, 3).map((pago) => pago.fecha)).toEqual(['2026-10-31', '2026-11-30', '2026-12-31']);
+      expect(plan.fechaVencimiento).toBe('2027-10-31');
+    });
+
+    test('un plan de 12 meses está exento de retención y uno de 5 meses retiene el 3 %', () => {
+      expect(plan.retencionIR).toBe(0);
+      expect(plan.valorFinal).toBe(plan.cronogramaPagos[11].saldo);
+      const corto = calculateProgrammedSavings({ monthlyContribution: 100, termMonths: 5, annualRate: 6 });
+      expect(corto.tasaRetencion).toBe(3);
+      expect(corto.retencionIR).toBeGreaterThan(0);
+    });
+
+    test('la TEA con capitalización mensual es mayor que la tasa nominal', () => {
+      expect(plan.tasaEfectiva).toBeCloseTo((Math.pow(1.005, 12) - 1) * 100, 6);
     });
   });
 

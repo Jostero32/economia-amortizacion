@@ -81,6 +81,39 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
     expect(pdf.status).toBe(200);
   });
 
+  test('simula un ahorro programado con aportes mensuales y genera su PDF', async () => {
+    const savings = await InvestmentProduct.findOne({ where: { nombre: 'Ahorro Programado' } });
+    const res = await request(app)
+      .post('/api/simulations/investments')
+      .send({ investmentProductId: savings.id, amount: 150, termDays: 360 });
+
+    expect(res.status).toBe(201);
+    const sim = res.body.data.simulation;
+    expect(Number(sim.aporteMensual)).toBe(150);
+    expect(Number(sim.monto)).toBe(1800);
+    expect(sim.cronogramaPagos).toHaveLength(12);
+    expect(Number(sim.valorFinal)).toBeGreaterThan(1800);
+    expect(res.body.data.product.tipo).toBe('AHORRO_PROGRAMADO');
+
+    const pdf = await request(app).get(`/api/simulations/investments/${sim.id}/pdf`);
+    expect(pdf.status).toBe(200);
+  });
+
+  test('el ahorro programado exige meses completos y un aporte dentro de los límites', async () => {
+    const savings = await InvestmentProduct.findOne({ where: { nombre: 'Ahorro Programado' } });
+    const days = await request(app)
+      .post('/api/simulations/investments')
+      .send({ investmentProductId: savings.id, amount: 150, termDays: 200 });
+    expect(days.status).toBe(400);
+    expect(days.body.message).toMatch(/número entero de meses/);
+
+    const amount = await request(app)
+      .post('/api/simulations/investments')
+      .send({ investmentProductId: savings.id, amount: 5, termDays: 360 });
+    expect(amount.status).toBe(400);
+    expect(amount.body.message).toMatch(/aporte mensual/);
+  });
+
   test('rechaza simulación con monto menor al mínimo del producto de inversión (Código 400)', async () => {
     const res = await request(app)
       .post('/api/simulations/investments')

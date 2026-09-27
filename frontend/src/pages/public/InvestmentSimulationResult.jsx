@@ -6,6 +6,7 @@ import Button from '../../components/Button';
 import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
 import InterestSchedule from '../../components/investment/InterestSchedule';
+import SavingsSchedule from '../../components/investment/SavingsSchedule';
 import { formatMoney, formatPercent, formatDate } from '../../utils/format';
 
 function DetailRow({ label, value, strong = false }) {
@@ -75,6 +76,7 @@ export default function InvestmentSimulationResult() {
   }
 
   const retention = Number(simulation.retencionIR || 0);
+  const isSavingsPlan = simulation.aporteMensual != null;
   const grossInterest = Number(simulation.interesGanado || 0);
   const netInterest = Number(simulation.interesNeto ?? grossInterest - retention);
 
@@ -111,12 +113,15 @@ export default function InvestmentSimulationResult() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-5">
         <div>
           <span className="text-[13px] text-gray-500 block">
-            {simulation.pagoIntereses === 'MENSUAL' ? 'Total que recibirás (capital e intereses netos)' : 'Recibirás al vencimiento'}
+            {isSavingsPlan
+              ? 'Tendrás al final del plan'
+              : simulation.pagoIntereses === 'MENSUAL' ? 'Total que recibirás (capital e intereses netos)' : 'Recibirás al vencimiento'}
           </span>
           <span className="text-[34px] font-bold text-primary font-numeric-hero leading-tight">{formatMoney(simulation.valorFinal)}</span>
         </div>
         <div>
-          <DetailRow label="Capital invertido" value={formatMoney(simulation.monto)} />
+          {isSavingsPlan && <DetailRow label="Aporte mensual" value={formatMoney(simulation.aporteMensual)} />}
+          <DetailRow label={isSavingsPlan ? 'Total aportado' : 'Capital invertido'} value={formatMoney(simulation.monto)} />
           <DetailRow label="Tasa de interés nominal anual" value={formatPercent(simulation.tasaAnual)} />
           {simulation.tasaEfectiva != null && (
             <DetailRow label="Tasa efectiva anual (TEA)" value={formatPercent(simulation.tasaEfectiva)} />
@@ -128,7 +133,13 @@ export default function InvestmentSimulationResult() {
           />
           <DetailRow label="Ganancia neta" value={formatMoney(netInterest)} strong />
         </div>
-        {simulation.pagoIntereses === 'MENSUAL' && simulation.cronogramaPagos?.length > 0 && (
+        {isSavingsPlan && simulation.cronogramaPagos?.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-[15px] font-bold text-primary">Aportes mes a mes</h2>
+            <SavingsSchedule pagos={simulation.cronogramaPagos} />
+          </div>
+        )}
+        {!isSavingsPlan && simulation.pagoIntereses === 'MENSUAL' && simulation.cronogramaPagos?.length > 0 && (
           <div className="space-y-2">
             <h2 className="text-[15px] font-bold text-primary">Pagos de intereses cada 30 días</h2>
             <InterestSchedule pagos={simulation.cronogramaPagos} />

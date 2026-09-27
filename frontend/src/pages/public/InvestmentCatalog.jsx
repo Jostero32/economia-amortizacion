@@ -86,7 +86,9 @@ export default function InvestmentCatalog() {
                       {product.nombre}
                     </h2>
                     <p className="text-[13px] text-on-surface-variant mt-0.5">
-                      {product.pagoIntereses === 'MENSUAL' ? 'Intereses pagados cada mes' : 'Capital e intereses al vencimiento'}
+                      {product.tipo === 'AHORRO_PROGRAMADO'
+                        ? 'Aportes mensuales con interés capitalizable'
+                        : product.pagoIntereses === 'MENSUAL' ? 'Intereses pagados cada mes' : 'Capital e intereses al vencimiento'}
                     </p>
                   </div>
                   <div className="w-10 h-10 rounded-xl bg-blue-50 text-secondary flex items-center justify-center flex-shrink-0">
@@ -114,7 +116,7 @@ export default function InvestmentCatalog() {
                   <div className="flex justify-between items-center">
                     <span className="text-on-surface-variant flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[16px] text-secondary">payments</span>
-                      Monto mínimo:
+                      {product.tipo === 'AHORRO_PROGRAMADO' ? 'Aporte mensual desde:' : 'Monto mínimo:'}
                     </span>
                     <span className="font-semibold text-primary font-numeric-data">
                       {formatUSD(product.montoMinimo || 500)}
@@ -126,7 +128,9 @@ export default function InvestmentCatalog() {
                       Plazos:
                     </span>
                     <span className="font-semibold text-primary font-numeric-data">
-                      {product.plazoMinimoDias} a {product.plazoMaximoDias} días
+                      {product.tipo === 'AHORRO_PROGRAMADO'
+                        ? `${Math.ceil(product.plazoMinimoDias / 30)} a ${Math.floor(product.plazoMaximoDias / 30)} meses`
+                        : `${product.plazoMinimoDias} a ${product.plazoMaximoDias} días`}
                     </span>
                   </div>
                 </div>
@@ -140,7 +144,11 @@ export default function InvestmentCatalog() {
 
               {/* Acción Principal */}
               <div className="pt-6 mt-4 border-t border-gray-100">
-                <Link to={`/inversiones/simulador?productId=${product.id}`}>
+                <Link
+                  to={product.tipo === 'AHORRO_PROGRAMADO'
+                    ? `/inversiones/ahorro?productId=${product.id}`
+                    : `/inversiones/simulador?productId=${product.id}`}
+                >
                   <Button variant="fintech" className="w-full" iconName="trending_up">
                     Simular inversión
                   </Button>

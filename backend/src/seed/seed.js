@@ -353,6 +353,22 @@ async function seedDatabase() {
       ],
     },
     {
+      nombre: 'Ahorro Programado',
+      tipo: 'AHORRO_PROGRAMADO',
+      descripcion: 'Ahorra una cuota fija cada mes y recibe lo ahorrado con sus intereses al final del plan. Los montos son del aporte mensual. (Valores demostrativos)',
+      montoMinimo: 20,
+      montoMaximo: 2000,
+      plazoMinimoDias: 180,
+      plazoMaximoDias: 1800,
+      tasa: 5.0,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 180, plazoMaxDias: 360, tasa: 4.50 },
+        { plazoMinDias: 361, plazoMaxDias: 720, tasa: 5.25 },
+        { plazoMinDias: 721, plazoMaxDias: 1800, tasa: 6.00 },
+      ],
+    },
+    {
       nombre: 'Depósito a Plazo Fijo Plus',
       descripcion: 'Para montos desde $25.000, con tasas preferenciales en todos los plazos. (Valores demostrativos)',
       montoMinimo: 25000,

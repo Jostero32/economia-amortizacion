@@ -13,12 +13,17 @@ const { quoteCredit, productSummary, saveCreditSimulation } = require('../servic
 const { simulatePrepayment } = require('../services/amortization/prepayment');
 const { getFrequency, effectiveToPeriodicRate } = require('../services/amortization/frequencies');
 const { isPeriodicCharge } = require('../services/amortization/charges');
-const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
+const {
+  calculateInvestment,
+  calculateProgrammedSavings,
+  resolveInvestmentRate,
+} = require('../services/investment/calculator');
 const {
   generateCreditSimulationPDF,
   generateInvestmentSimulationPDF,
 } = require('../services/pdf/pdfService');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { formatMoney } = require('../utils/money');
 const { todayISO } = require('../utils/dates');
 
 /**
@@ -238,13 +243,18 @@ async function simulateInvestment(req, res, next) {
 
     const P = Number(amount);
     const dias = parseInt(termDays, 10);
+    const isSavingsPlan = product.tipo === 'AHORRO_PROGRAMADO';
 
     if (P < Number(product.montoMinimo) || P > Number(product.montoMaximo)) {
       return errorResponse(
         res,
-        `El monto debe estar entre $${Number(product.montoMinimo).toFixed(2)} y $${Number(product.montoMaximo).toFixed(2)}.`,
+        `${isSavingsPlan ? 'El aporte mensual' : 'El monto'} debe estar entre ${formatMoney(product.montoMinimo)} y ${formatMoney(product.montoMaximo)}.`,
         400
       );
+    }
+    // El ahorro programado se pacta en meses completos (30 días cada uno)
+    if (isSavingsPlan && dias % 30 !== 0) {
+      return errorResponse(res, 'El plazo del ahorro programado debe ser un número entero de meses.', 400);
     }
 
     if (dias < product.plazoMinimoDias || dias > product.plazoMaximoDias) {
@@ -258,13 +268,20 @@ async function simulateInvestment(req, res, next) {
     // Tasa correspondiente al tramo de días
     const applicableRate = resolveInvestmentRate(product, dias);
 
-    const result = calculateInvestment({
-      amount: P,
-      termDays: dias,
-      annualRate: applicableRate,
-      startDate: startDate || todayISO(),
-      interestPayment: product.pagoIntereses,
-    });
+    const result = isSavingsPlan
+      ? calculateProgrammedSavings({
+        monthlyContribution: P,
+        termMonths: dias / 30,
+        annualRate: applicableRate,
+        startDate: startDate || todayISO(),
+      })
+      : calculateInvestment({
+        amount: P,
+        termDays: dias,
+        annualRate: applicableRate,
+        startDate: startDate || todayISO(),
+        interestPayment: product.pagoIntereses,
+      });
 
     const userId = req.user ? req.user.id : null;
 
@@ -272,6 +289,7 @@ async function simulateInvestment(req, res, next) {
       investmentProductId: product.id,
       userId,
       monto: result.capital,
+      aporteMensual: result.aporteMensual || null,
       plazoDias: result.plazoDias,
       tasaAnual: result.tasaAnual,
       tasaEfectiva: result.tasaEfectiva,
@@ -293,6 +311,7 @@ async function simulateInvestment(req, res, next) {
         product: {
           id: product.id,
           nombre: product.nombre,
+          tipo: product.tipo,
           pagoIntereses: product.pagoIntereses,
         },
       },

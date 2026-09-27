@@ -41,6 +41,12 @@ const InvestmentProduct = sequelize.define('InvestmentProduct', {
     allowNull: true,
     comment: 'Tasa referencial base en porcentaje anual',
   },
+  tipo: {
+    type: DataTypes.ENUM('PLAZO_FIJO', 'AHORRO_PROGRAMADO'),
+    allowNull: false,
+    defaultValue: 'PLAZO_FIJO',
+    comment: 'Depósito a plazo fijo o plan de ahorro programado con aportes mensuales',
+  },
   pagoIntereses: {
     type: DataTypes.ENUM('AL_VENCIMIENTO', 'MENSUAL'),
     allowNull: false,

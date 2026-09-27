@@ -90,7 +90,8 @@ export default function InvestmentApplicationDetail() {
           <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6">
             <h2 className="text-[16px] font-bold text-primary mb-2">Condiciones del depósito</h2>
             <Row label="Producto" value={application.product?.nombre} />
-            <Row label="Capital" value={formatMoney(application.monto)} />
+            {simulation?.aporteMensual != null && <Row label="Aporte mensual" value={formatMoney(simulation.aporteMensual)} />}
+            <Row label={simulation?.aporteMensual != null ? 'Total a aportar' : 'Capital'} value={formatMoney(application.monto)} />
             <Row label="Plazo" value={`${application.plazoDias} días`} />
             {simulation && <Row label="Vencimiento" value={formatDate(simulation.fechaVencimiento)} />}
             <Row label="Tasa nominal anual" value={formatPercent(application.tasaAplicada)} />

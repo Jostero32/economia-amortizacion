@@ -70,6 +70,22 @@ const additiveMigrations = [
     },
   },
   {
+    tableName: 'investment_products',
+    columns: {
+      tipo: {
+        type: DataTypes.ENUM('PLAZO_FIJO', 'AHORRO_PROGRAMADO'),
+        allowNull: false,
+        defaultValue: 'PLAZO_FIJO',
+      },
+    },
+  },
+  {
+    tableName: 'investment_simulations',
+    columns: {
+      aporteMensual: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+    },
+  },
+  {
     tableName: 'credit_types',
     columns: {
       frecuenciasPago: { type: DataTypes.STRING(100), allowNull: false, defaultValue: 'MENSUAL' },

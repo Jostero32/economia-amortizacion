@@ -110,7 +110,7 @@ export default function InvestmentSimulator() {
     publicService
       .getInvestmentProducts()
       .then((res) => {
-        const prods = res.data?.products || [];
+        const prods = (res.data?.products || []).filter((p) => p.tipo !== 'AHORRO_PROGRAMADO');
         setProducts(prods);
         if (prods.length > 0 && !prods.some((p) => String(p.id) === String(form.productId))) {
           setForm((current) => ({ ...current, productId: String(prods[0].id) }));
@@ -197,7 +197,10 @@ export default function InvestmentSimulator() {
           Simulador de inversiones
         </h1>
         <p className="text-[15px] text-on-surface-variant mt-1">
-          Calcula cuánto recibirás al vencimiento de tu depósito a plazo fijo.
+          Calcula cuánto recibirás al vencimiento de tu depósito a plazo fijo.{' '}
+          <Link to="/inversiones/ahorro" className="text-secondary font-medium hover:underline">
+            ¿Prefieres ahorrar cada mes? Simula un ahorro programado.
+          </Link>
         </p>
       </div>
 

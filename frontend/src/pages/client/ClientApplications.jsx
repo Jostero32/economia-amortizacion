@@ -396,7 +396,10 @@ export default function ClientApplications() {
         <Card title="Solicitar inversión" subtitle="Completa tus datos para abrir tu depósito a plazo" iconName="savings" className="border-2 border-secondary/30">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-surface-container-low p-4 rounded-lg mb-4 text-[13px]">
             <div><span className="block text-on-surface-variant">Producto</span><strong>{investmentSimulation.product?.nombre}</strong></div>
-            <div><span className="block text-on-surface-variant">Capital</span><strong>{formatMoney(investmentSimulation.monto)}</strong></div>
+            <div>
+              <span className="block text-on-surface-variant">{investmentSimulation.aporteMensual != null ? 'Aporte mensual' : 'Capital'}</span>
+              <strong>{formatMoney(investmentSimulation.aporteMensual ?? investmentSimulation.monto)}</strong>
+            </div>
             <div><span className="block text-on-surface-variant">Plazo</span><strong>{investmentSimulation.plazoDias} días · vence {formatDate(investmentSimulation.fechaVencimiento)}</strong></div>
             <div><span className="block text-on-surface-variant">Recibirás</span><strong>{formatMoney(investmentSimulation.valorFinal)}</strong></div>
           </div>

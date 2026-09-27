@@ -12,7 +12,7 @@
  */
 
 const { roundToTwo } = require('../../utils/money');
-const { addDays, todayISO, toISODate } = require('../../utils/dates');
+const { addDays, addMonthsClamped, todayISO, toISODate } = require('../../utils/dates');
 
 const TASA_RETENCION_IR = 3.0;
 const PLAZO_EXENTO_RETENCION_DIAS = 180;
@@ -137,9 +137,88 @@ function calculateInvestment({ amount, termDays, annualRate, startDate, interest
   };
 }
 
+/**
+ * Ahorro programado: aportes mensuales fijos al inicio de cada mes que capitalizan interés.
+ *
+ * Con i = tasa nominal anual / 12, el saldo de cada mes es (saldo anterior + aporte)·(1 + i), es
+ * decir, el valor futuro de una anualidad anticipada: VF = A · [((1+i)^n - 1) / i] · (1+i).
+ * Los intereses se calculan y redondean mes a mes. La retención del Impuesto a la Renta se aplica
+ * con la misma regla del depósito a plazo (exento desde 180 días).
+ *
+ * @param {Object} params
+ * @param {number} params.monthlyContribution - Aporte mensual
+ * @param {number} params.termMonths - Número de meses de ahorro
+ * @param {number} params.annualRate - Tasa nominal anual en porcentaje
+ * @param {string} [params.startDate] - Fecha del primer aporte
+ * @returns {Object} Resumen y cronograma de aportes
+ */
+function calculateProgrammedSavings({ monthlyContribution, termMonths, annualRate, startDate }) {
+  const aporte = Number(monthlyContribution);
+  const meses = parseInt(termMonths, 10);
+  const tasa = Number(annualRate);
+
+  if (isNaN(aporte) || aporte <= 0) {
+    throw new Error('El aporte mensual debe ser mayor a 0.');
+  }
+  if (isNaN(meses) || meses <= 0) {
+    throw new Error('El plazo en meses debe ser un entero positivo mayor a 0.');
+  }
+  if (isNaN(tasa) || tasa < 0) {
+    throw new Error('La tasa de interés debe ser un valor no negativo.');
+  }
+
+  const fechaInicio = startDate ? toISODate(startDate) : todayISO();
+  const tasaMensual = tasa / 100 / 12;
+
+  const cronogramaPagos = [];
+  let saldo = 0;
+  let interesGanado = 0;
+  for (let numero = 1; numero <= meses; numero++) {
+    const saldoConAporte = roundToTwo(saldo + aporte);
+    const interes = roundToTwo(saldoConAporte * tasaMensual);
+    saldo = roundToTwo(saldoConAporte + interes);
+    interesGanado = roundToTwo(interesGanado + interes);
+    cronogramaPagos.push({
+      numero,
+      fecha: addMonthsClamped(fechaInicio, numero - 1),
+      aporte: roundToTwo(aporte),
+      interes,
+      saldo,
+    });
+  }
+
+  const dias = meses * 30;
+  const exentoRetencion = dias >= PLAZO_EXENTO_RETENCION_DIAS;
+  const tasaRetencion = exentoRetencion ? 0 : TASA_RETENCION_IR;
+  const retencionIR = roundToTwo(interesGanado * (tasaRetencion / 100));
+  const interesNeto = roundToTwo(interesGanado - retencionIR);
+  const totalAportado = roundToTwo(aporte * meses);
+
+  return {
+    aporteMensual: roundToTwo(aporte),
+    capital: totalAportado,
+    plazoDias: dias,
+    plazoMeses: meses,
+    tasaAnual: tasa,
+    // Capitalización mensual: TEA = (1 + i/12)^12 - 1
+    tasaEfectiva: (Math.pow(1 + tasaMensual, 12) - 1) * 100,
+    pagoIntereses: 'AL_VENCIMIENTO',
+    cronogramaPagos,
+    interesGanado,
+    exentoRetencion,
+    tasaRetencion,
+    retencionIR,
+    interesNeto,
+    valorFinal: roundToTwo(totalAportado + interesNeto),
+    fechaInicio,
+    fechaVencimiento: addMonthsClamped(fechaInicio, meses),
+  };
+}
+
 module.exports = {
   TASA_RETENCION_IR,
   PLAZO_EXENTO_RETENCION_DIAS,
+  calculateProgrammedSavings,
   calculateInvestment,
   resolveInvestmentRate,
   roundToTwo,

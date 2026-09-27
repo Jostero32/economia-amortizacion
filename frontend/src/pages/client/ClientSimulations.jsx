@@ -139,8 +139,12 @@ export default function ClientSimulations() {
               <tr key={sim.id} className="hover:bg-surface-container-low/40 transition-colors">
                 <td className="py-3 px-4 text-[12px] text-on-surface-variant">{formatDateTime(sim.createdAt)}</td>
                 <td className="py-3 px-4 font-medium text-primary">{sim.product?.nombre || 'Depósito a plazo fijo'}</td>
-                <td className="py-3 px-4 text-right font-numeric-data font-bold text-primary">{formatMoney(sim.monto)}</td>
-                <td className="py-3 px-4 text-on-surface-variant">{sim.plazoDias} días</td>
+                <td className="py-3 px-4 text-right font-numeric-data font-bold text-primary">
+                  {sim.aporteMensual != null ? `${formatMoney(sim.aporteMensual)}/mes` : formatMoney(sim.monto)}
+                </td>
+                <td className="py-3 px-4 text-on-surface-variant">
+                  {sim.aporteMensual != null ? `${sim.plazoDias / 30} meses` : `${sim.plazoDias} días`}
+                </td>
                 <td className="py-3 px-4 text-right font-numeric-data">{formatMoney(sim.valorFinal)}</td>
                 <td className="py-3 px-4 text-right whitespace-nowrap">
                   <Link to={`/inversiones/simulador/${sim.id}`}>

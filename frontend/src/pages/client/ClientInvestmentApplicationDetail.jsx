@@ -98,7 +98,8 @@ export default function ClientInvestmentApplicationDetail() {
               </span>
             </div>
             <div>
-              <Row label="Capital" value={formatMoney(application.monto)} />
+              {simulation?.aporteMensual != null && <Row label="Aporte mensual" value={formatMoney(simulation.aporteMensual)} />}
+              <Row label={simulation?.aporteMensual != null ? 'Total a aportar' : 'Capital'} value={formatMoney(application.monto)} />
               <Row label="Plazo" value={`${application.plazoDias} días`} />
               {simulation && <Row label="Vencimiento estimado" value={formatDate(simulation.fechaVencimiento)} />}
               <Row label="Tasa de interés nominal anual" value={formatPercent(application.tasaAplicada)} />
