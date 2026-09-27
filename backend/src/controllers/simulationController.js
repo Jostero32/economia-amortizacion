@@ -195,6 +195,7 @@ async function simulateInvestment(req, res, next) {
       termDays: dias,
       annualRate: applicableRate,
       startDate: startDate || todayISO(),
+      interestPayment: product.pagoIntereses,
     });
 
     const userId = req.user ? req.user.id : null;
@@ -206,6 +207,8 @@ async function simulateInvestment(req, res, next) {
       plazoDias: result.plazoDias,
       tasaAnual: result.tasaAnual,
       tasaEfectiva: result.tasaEfectiva,
+      pagoIntereses: result.pagoIntereses,
+      cronogramaPagos: result.cronogramaPagos,
       interesGanado: result.interesGanado,
       tasaRetencion: result.tasaRetencion,
       retencionIR: result.retencionIR,
@@ -222,6 +225,7 @@ async function simulateInvestment(req, res, next) {
         product: {
           id: product.id,
           nombre: product.nombre,
+          pagoIntereses: product.pagoIntereses,
         },
       },
       201,

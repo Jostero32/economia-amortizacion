@@ -95,6 +95,43 @@ describe('Cálculos de Rendimiento de Inversiones y Depósitos a Plazo Fijo (DPF
   });
 
   // =========================================================================
+  // PAGO MENSUAL DE INTERESES
+  // =========================================================================
+  describe('Depósito con pago mensual de intereses', () => {
+    const result = calculateInvestment({
+      amount: 20000,
+      annualRate: 5.09,
+      termDays: 100,
+      startDate: '2026-10-01',
+      interestPayment: 'MENSUAL',
+    });
+
+    test('paga cada 30 días y el último período cubre los días restantes', () => {
+      expect(result.pagoIntereses).toBe('MENSUAL');
+      expect(result.cronogramaPagos.map((pago) => pago.dias)).toEqual([30, 30, 30, 10]);
+      expect(result.cronogramaPagos.map((pago) => pago.fecha)).toEqual([
+        '2026-10-31',
+        '2026-11-30',
+        '2026-12-30',
+        '2027-01-09',
+      ]);
+    });
+
+    test('el capital se devuelve con el último pago y los totales suman el cronograma', () => {
+      const ultimo = result.cronogramaPagos[result.cronogramaPagos.length - 1];
+      expect(ultimo.capital).toBe(20000);
+      const sumaIntereses = result.cronogramaPagos.reduce((sum, pago) => sum + pago.interes, 0);
+      expect(result.interesGanado).toBeCloseTo(sumaIntereses, 2);
+      // Plazo menor a 180 días: se retiene el 3 % en cada pago
+      expect(result.cronogramaPagos[0].retencion).toBe(Math.round(result.cronogramaPagos[0].interes * 3) / 100);
+    });
+
+    test('con pago mensual la TEA es mayor que la tasa nominal', () => {
+      expect(result.tasaEfectiva).toBeGreaterThan(5.09);
+    });
+  });
+
+  // =========================================================================
   // TASA POR TRAMO DE PLAZO
   // =========================================================================
   describe('Selección de la tasa según el tramo de días', () => {

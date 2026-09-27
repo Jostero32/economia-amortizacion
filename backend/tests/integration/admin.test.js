@@ -363,6 +363,51 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
   // =========================================================================
   // SECCIÓN 28: SEGURIDAD Y PRIVACIDAD EN RESPUESTAS DE ERROR
   // =========================================================================
+  describe('Catálogo y tramos de tasas de inversión', () => {
+    test('el seed incluye los productos de vivienda con desgravamen obligatorio y el crédito emergente', async () => {
+      const res = await request(app).get('/api/credit-products');
+      const byName = Object.fromEntries(res.body.data.products.map((p) => [p.nombre, p]));
+      expect(byName['Vivienda de Interés Social (VIS)'].requiereDesgravamen).toBe(true);
+      expect(byName['Vivienda de Interés Público (VIP)'].requiereDesgravamen).toBe(true);
+      expect(byName['Crédito Emergente'].plazoMaximo).toBeLessThan(12);
+      expect(res.body.data.products.length).toBeGreaterThanOrEqual(12);
+    });
+
+    test('ADMIN gestiona tramos: rechaza cruces, versiona cambios de tasa y desactiva', async () => {
+      const list = await request(app).get('/api/admin/investments').set('Authorization', `Bearer ${adminToken}`);
+      expect(list.status).toBe(200);
+      const product = list.body.data.products.find((p) => p.nombre === 'Depósito a Plazo Fijo');
+      const tramo = product.rates.find((r) => r.plazoMinDias === 61 && r.activo);
+
+      const overlap = await request(app)
+        .post(`/api/admin/investments/${product.id}/rates`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ plazoMinDias: 50, plazoMaxDias: 70, tasa: 4.5 });
+      expect(overlap.status).toBe(400);
+      expect(overlap.body.message).toMatch(/se cruza/);
+
+      const update = await request(app)
+        .put(`/api/admin/investments/${product.id}/rates/${tramo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ tasa: 4.55 });
+      expect(update.status).toBe(200);
+      expect(update.body.data.rate.id).not.toBe(tramo.id);
+      expect(Number(update.body.data.rate.tasa)).toBe(4.55);
+
+      const after = await request(app).get('/api/admin/investments').set('Authorization', `Bearer ${adminToken}`);
+      const history = after.body.data.products
+        .find((p) => p.id === product.id)
+        .rates.filter((r) => r.plazoMinDias === 61);
+      expect(history.filter((r) => r.activo)).toHaveLength(1);
+      expect(history.filter((r) => !r.activo)).toHaveLength(1);
+
+      const remove = await request(app)
+        .delete(`/api/admin/investments/${product.id}/rates/${update.body.data.rate.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(remove.status).toBe(200);
+    });
+  });
+
   describe('Control de Fuga de Información Sensible', () => {
     test('las respuestas de error no exponen JWT_SECRET, contraseñas ni credenciales de DB', async () => {
       const res = await request(app)

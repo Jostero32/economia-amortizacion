@@ -53,6 +53,23 @@ const additiveMigrations = [
     },
   },
   {
+    tableName: 'investment_products',
+    columns: {
+      pagoIntereses: {
+        type: DataTypes.ENUM('AL_VENCIMIENTO', 'MENSUAL'),
+        allowNull: false,
+        defaultValue: 'AL_VENCIMIENTO',
+      },
+    },
+  },
+  {
+    tableName: 'investment_simulations',
+    columns: {
+      pagoIntereses: { type: DataTypes.STRING(20), allowNull: true },
+      cronogramaPagos: { type: DataTypes.JSON, allowNull: true },
+    },
+  },
+  {
     tableName: 'credit_applications',
     columns: {
       relacionCuotaIngreso: { type: DataTypes.DECIMAL(6, 2), allowNull: true },

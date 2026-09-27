@@ -83,6 +83,10 @@ function investmentProductRules(isUpdate) {
       .bail()
       .custom(notLessThan('plazoMinimoDias', 'El plazo máximo no puede ser menor al plazo mínimo.')),
     field('tasa').isFloat({ gt: 0, max: 100 }).withMessage('La tasa base debe ser mayor a 0 % y máximo 100 %.'),
+    body('pagoIntereses')
+      .optional()
+      .isIn(['AL_VENCIMIENTO', 'MENSUAL'])
+      .withMessage('El pago de intereses debe ser al vencimiento o mensual.'),
     body('fuente').optional({ nullable: true }).isLength({ max: 150 }).withMessage('La fuente admite máximo 150 caracteres.'),
     body('activo').optional().isBoolean().withMessage('El estado debe ser verdadero o falso.').toBoolean(),
     validateRequest,
@@ -103,7 +107,27 @@ const validateRateCreate = [
   validateRequest,
 ];
 
+const validateInvestmentRateCreate = [
+  body('plazoMinDias').isInt({ min: 1, max: 3600 }).withMessage('Ingresa el plazo mínimo del tramo en días.'),
+  body('plazoMaxDias')
+    .isInt({ min: 1, max: 3600 })
+    .withMessage('Ingresa el plazo máximo del tramo en días.')
+    .bail()
+    .custom(notLessThan('plazoMinDias', 'El plazo máximo del tramo no puede ser menor al mínimo.')),
+  body('tasa').isFloat({ gt: 0, max: 100 }).withMessage('La tasa debe ser mayor a 0 % y máximo 100 %.'),
+  body('fuente').optional({ nullable: true }).isLength({ max: 150 }).withMessage('La fuente admite máximo 150 caracteres.'),
+  validateRequest,
+];
+
+const validateInvestmentRateUpdate = [
+  body('tasa').isFloat({ gt: 0, max: 100 }).withMessage('La tasa debe ser mayor a 0 % y máximo 100 %.'),
+  body('fuente').optional({ nullable: true }).isLength({ max: 150 }).withMessage('La fuente admite máximo 150 caracteres.'),
+  validateRequest,
+];
+
 module.exports = {
+  validateInvestmentRateCreate,
+  validateInvestmentRateUpdate,
   validateCreditProductCreate: creditProductRules(false),
   validateCreditProductUpdate: creditProductRules(true),
   validateInvestmentProductCreate: investmentProductRules(false),

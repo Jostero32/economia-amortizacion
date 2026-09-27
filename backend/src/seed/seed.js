@@ -152,6 +152,69 @@ async function seedDatabase() {
       plazoMinimo: 3,
       plazoMaximo: 36,
     },
+    {
+      nombre: 'Crédito Emergente',
+      segmentCode: 'CONSUMO',
+      descripcion: 'Préstamo de consumo a corto plazo para imprevistos. Plazo menor a un año: la contribución SOLCA se anualiza. (Valores demostrativos)',
+      montoMinimo: 300,
+      montoMaximo: 3000,
+      plazoMinimo: 3,
+      plazoMaximo: 11,
+    },
+    {
+      nombre: 'Crédito Educativo Social',
+      segmentCode: 'EDUCATIVO_SOCIAL',
+      descripcion: 'Financiamiento de estudios para personas de menores ingresos con tasa preferencial. (Valores demostrativos)',
+      montoMinimo: 500,
+      montoMaximo: 15000,
+      plazoMinimo: 12,
+      plazoMaximo: 60,
+    },
+    {
+      nombre: 'Vivienda de Interés Social (VIS)',
+      segmentCode: 'VIVIENDA_VIS',
+      descripcion: 'Compra de primera vivienda de interés social con tasa preferencial. Incluye seguro de desgravamen obligatorio. (Valores demostrativos)',
+      montoMinimo: 15000,
+      montoMaximo: 80000,
+      plazoMinimo: 60,
+      plazoMaximo: 300,
+    },
+    {
+      nombre: 'Vivienda de Interés Público (VIP)',
+      segmentCode: 'VIVIENDA_VIP',
+      descripcion: 'Compra de primera vivienda de interés público con tasa preferencial. Incluye seguro de desgravamen obligatorio. (Valores demostrativos)',
+      montoMinimo: 30000,
+      montoMaximo: 110000,
+      plazoMinimo: 60,
+      plazoMaximo: 300,
+    },
+    {
+      nombre: 'Microcrédito de Acumulación Simple',
+      segmentCode: 'MICRO_ACUM_SIMPLE',
+      descripcion: 'Capital de trabajo y activos para negocios en crecimiento. (Valores demostrativos)',
+      montoMinimo: 1000,
+      montoMaximo: 20000,
+      plazoMinimo: 6,
+      plazoMaximo: 48,
+    },
+    {
+      nombre: 'Microcrédito de Acumulación Ampliada',
+      segmentCode: 'MICRO_ACUM_AMPLIADA',
+      descripcion: 'Financiamiento para microempresas consolidadas con mayores ventas. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 50000,
+      plazoMinimo: 12,
+      plazoMaximo: 60,
+    },
+    {
+      nombre: 'Crédito Productivo PYMES',
+      segmentCode: 'PROD_PYMES',
+      descripcion: 'Capital de trabajo y activos fijos para pequeñas y medianas empresas. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 250000,
+      plazoMinimo: 12,
+      plazoMaximo: 84,
+    },
   ];
 
   for (const ct of creditTypesData) {
@@ -240,49 +303,90 @@ async function seedDatabase() {
     console.log('[Seed] Cobro "Seguro de Desgravamen" clasificado como seguro de desgravamen.');
   }
 
-  // 6. Inversiones a Plazo Fijo y Tasas BCE
-  const [invProduct] = await InvestmentProduct.findOrCreate({
-    where: { nombre: 'Depósito a Plazo Fijo' },
-    defaults: {
+  // 6. Inversiones a Plazo Fijo y tramos de tasas por plazo
+  const investmentProductsData = [
+    {
       nombre: 'Depósito a Plazo Fijo',
-      descripcion: 'Inversión a plazo fijo con rendimiento garantizado según tramo de días conforme a tasas referenciales BCE.',
+      descripcion: 'Inversión a plazo fijo con rendimiento según el tramo de días; capital e intereses se pagan al vencimiento.',
       montoMinimo: 500,
       montoMaximo: 500000,
       plazoMinimoDias: 30,
       plazoMaximoDias: 1080,
       tasa: 5.09,
-      fuente: 'Banco Central del Ecuador',
-      fechaVigencia: '2026-09-01',
-      activo: true,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.03 },
+        { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.40 },
+        { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.41 },
+        { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.46 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.09 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.26 },
+      ],
     },
-  });
-
-  const investmentRatesData = [
-    { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.03 },
-    { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.40 },
-    { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.41 },
-    { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.46 },
-    { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.09 },
-    { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.26 },
+    {
+      nombre: 'Depósito a Plazo con Pago Mensual',
+      descripcion: 'Recibe tus intereses cada 30 días y tu capital al vencimiento. Tasa algo menor porque cobras los intereses antes. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 500000,
+      plazoMinimoDias: 90,
+      plazoMaximoDias: 1080,
+      tasa: 4.85,
+      pagoIntereses: 'MENSUAL',
+      rates: [
+        { plazoMinDias: 90, plazoMaxDias: 180, tasa: 4.20 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 4.85 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.00 },
+      ],
+    },
+    {
+      nombre: 'Depósito a Plazo Fijo Plus',
+      descripcion: 'Para montos desde $25.000, con tasas preferenciales en todos los plazos. (Valores demostrativos)',
+      montoMinimo: 25000,
+      montoMaximo: 1000000,
+      plazoMinimoDias: 30,
+      plazoMaximoDias: 1080,
+      tasa: 5.44,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.38 },
+        { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.75 },
+        { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.76 },
+        { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.81 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.44 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.61 },
+      ],
+    },
   ];
 
-  for (const ir of investmentRatesData) {
-    await InvestmentRate.findOrCreate({
-      where: {
-        investmentProductId: invProduct.id,
-        plazoMinDias: ir.plazoMinDias,
-        plazoMaxDias: ir.plazoMaxDias,
-      },
+  for (const { rates, ...productData } of investmentProductsData) {
+    const [invProduct] = await InvestmentProduct.findOrCreate({
+      where: { nombre: productData.nombre },
       defaults: {
-        ...ir,
-        investmentProductId: invProduct.id,
+        ...productData,
         fuente: 'Banco Central del Ecuador',
         fechaVigencia: '2026-09-01',
         activo: true,
       },
     });
+
+    for (const ir of rates) {
+      await InvestmentRate.findOrCreate({
+        where: {
+          investmentProductId: invProduct.id,
+          plazoMinDias: ir.plazoMinDias,
+          plazoMaxDias: ir.plazoMaxDias,
+        },
+        defaults: {
+          ...ir,
+          investmentProductId: invProduct.id,
+          fuente: 'Banco Central del Ecuador',
+          fechaVigencia: '2026-09-01',
+          activo: true,
+        },
+      });
+    }
   }
-  console.log('[Seed] Producto de inversión y tramos de tasas BCE asegurados.');
+  console.log('[Seed] Productos de inversión y tramos de tasas asegurados.');
   console.log('--- Carga de semilla finalizada con éxito ---');
 }
 

@@ -36,7 +36,7 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     advisorToken = generateTestToken(advisorUser);
 
     creditProduct = await CreditType.findOne({ where: { nombre: 'Crédito de Consumo' } });
-    investmentProduct = await InvestmentProduct.findOne({ where: { activo: true } });
+    investmentProduct = await InvestmentProduct.findOne({ where: { nombre: 'Depósito a Plazo Fijo' } });
   });
 
   afterAll(async () => {

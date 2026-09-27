@@ -400,6 +400,7 @@ async function createInvestmentApplication(req, res, next) {
         amount: Number(monto),
         termDays: Number(plazoDias),
         annualRate: resolveInvestmentRate(product, Number(plazoDias)),
+        interestPayment: product.pagoIntereses,
       });
       simulation = await InvestmentSimulation.create({
         investmentProductId: product.id,
@@ -408,6 +409,8 @@ async function createInvestmentApplication(req, res, next) {
         plazoDias: result.plazoDias,
         tasaAnual: result.tasaAnual,
         tasaEfectiva: result.tasaEfectiva,
+        pagoIntereses: result.pagoIntereses,
+        cronogramaPagos: result.cronogramaPagos,
         interesGanado: result.interesGanado,
         tasaRetencion: result.tasaRetencion,
         retencionIR: result.retencionIR,

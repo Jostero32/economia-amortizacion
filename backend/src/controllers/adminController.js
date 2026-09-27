@@ -412,17 +412,28 @@ async function deleteCharge(req, res, next) {
 // 4. Inversiones
 async function createInvestmentProduct(req, res, next) {
   try {
-    const { nombre, descripcion, montoMinimo, montoMaximo, plazoMinimoDias, plazoMaximoDias, tasa, fuente } = req.body;
+    const {
+      nombre,
+      descripcion,
+      montoMinimo,
+      montoMaximo,
+      plazoMinimoDias,
+      plazoMaximoDias,
+      tasa,
+      pagoIntereses,
+      fuente,
+    } = req.body;
 
     const product = await InvestmentProduct.create({
       nombre,
       descripcion,
-      montoMinimo: montoMinimo || 500,
-      montoMaximo: montoMaximo || 500000,
-      plazoMinimoDias: plazoMinimoDias || 30,
-      plazoMaximoDias: plazoMaximoDias || 1080,
-      tasa: tasa || 5.09,
-      fuente: fuente || 'Banco Central del Ecuador',
+      montoMinimo,
+      montoMaximo,
+      plazoMinimoDias,
+      plazoMaximoDias,
+      tasa,
+      pagoIntereses: pagoIntereses || 'AL_VENCIMIENTO',
+      fuente: fuente || 'Resolución Administrativa',
       fechaVigencia: todayISO(),
       activo: true,
     });
@@ -441,6 +452,136 @@ async function createInvestmentProduct(req, res, next) {
   }
 }
 
+async function getInvestmentProductsAdmin(req, res, next) {
+  try {
+    const products = await InvestmentProduct.findAll({
+      include: [{ model: InvestmentRate, as: 'rates' }],
+      order: [['activo', 'DESC'], ['id', 'ASC'], [{ model: InvestmentRate, as: 'rates' }, 'plazoMinDias', 'ASC']],
+    });
+    return successResponse(res, { products });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Verifica que un tramo esté dentro del plazo del producto y no se cruce con otro tramo activo
+ */
+async function validateRateRange(product, { plazoMinDias, plazoMaxDias }, excludeRateId = null) {
+  if (plazoMinDias < product.plazoMinimoDias || plazoMaxDias > product.plazoMaximoDias) {
+    return `El tramo debe estar dentro del plazo del producto (${product.plazoMinimoDias} a ${product.plazoMaximoDias} días).`;
+  }
+  const activeRates = await InvestmentRate.findAll({
+    where: { investmentProductId: product.id, activo: true },
+  });
+  const overlapping = activeRates.find((rate) => rate.id !== excludeRateId
+    && plazoMinDias <= rate.plazoMaxDias
+    && plazoMaxDias >= rate.plazoMinDias);
+  if (overlapping) {
+    return `El tramo se cruza con el tramo de ${overlapping.plazoMinDias} a ${overlapping.plazoMaxDias} días.`;
+  }
+  return null;
+}
+
+async function createInvestmentRate(req, res, next) {
+  try {
+    const product = await InvestmentProduct.findByPk(req.params.id);
+    if (!product) return errorResponse(res, 'Producto de inversión no encontrado.', 404);
+
+    const data = {
+      plazoMinDias: Number(req.body.plazoMinDias),
+      plazoMaxDias: Number(req.body.plazoMaxDias),
+      tasa: Number(req.body.tasa),
+    };
+    const rangeError = await validateRateRange(product, data);
+    if (rangeError) return errorResponse(res, rangeError, 400);
+
+    const rate = await InvestmentRate.create({
+      ...data,
+      investmentProductId: product.id,
+      fuente: req.body.fuente || 'Resolución Administrativa',
+      fechaVigencia: todayISO(),
+      activo: true,
+    });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: rate.id,
+      detalles: { producto: product.nombre, ...data },
+    });
+
+    return successResponse(res, { rate }, 201, 'Tramo de tasa registrado.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Cambia la tasa de un tramo conservando el histórico: el tramo vigente se desactiva y se crea
+ * uno nuevo con la tasa actualizada desde hoy.
+ */
+async function updateInvestmentRate(req, res, next) {
+  try {
+    const rate = await InvestmentRate.findOne({
+      where: { id: req.params.rateId, investmentProductId: req.params.id, activo: true },
+    });
+    if (!rate) return errorResponse(res, 'Tramo de tasa no encontrado o inactivo.', 404);
+
+    const nuevaTasa = Number(req.body.tasa);
+    await rate.update({ activo: false });
+    const nuevo = await InvestmentRate.create({
+      investmentProductId: rate.investmentProductId,
+      plazoMinDias: rate.plazoMinDias,
+      plazoMaxDias: rate.plazoMaxDias,
+      tasa: nuevaTasa,
+      fuente: req.body.fuente || 'Resolución Administrativa',
+      fechaVigencia: todayISO(),
+      activo: true,
+    });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: nuevo.id,
+      detalles: {
+        tramo: `${rate.plazoMinDias}-${rate.plazoMaxDias} días`,
+        tasaAnterior: Number(rate.tasa),
+        nuevaTasa,
+      },
+    });
+
+    return successResponse(res, { rate: nuevo }, 200, 'Tasa del tramo actualizada.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteInvestmentRate(req, res, next) {
+  try {
+    const rate = await InvestmentRate.findOne({
+      where: { id: req.params.rateId, investmentProductId: req.params.id },
+    });
+    if (!rate) return errorResponse(res, 'Tramo de tasa no encontrado.', 404);
+
+    await rate.update({ activo: false });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: rate.id,
+      detalles: { accion: 'Desactivación del tramo', tramo: `${rate.plazoMinDias}-${rate.plazoMaxDias} días` },
+    });
+
+    return successResponse(res, null, 200, 'Tramo desactivado.');
+  } catch (error) {
+    next(error);
+  }
+}
+
 const INVESTMENT_PRODUCT_FIELDS = [
   'nombre',
   'descripcion',
@@ -449,6 +590,7 @@ const INVESTMENT_PRODUCT_FIELDS = [
   'plazoMinimoDias',
   'plazoMaximoDias',
   'tasa',
+  'pagoIntereses',
   'fuente',
   'activo',
 ];
@@ -705,9 +847,13 @@ module.exports = {
   createCharge,
   updateCharge,
   deleteCharge,
+  getInvestmentProductsAdmin,
   createInvestmentProduct,
   updateInvestmentProduct,
   deleteInvestmentProduct,
+  createInvestmentRate,
+  updateInvestmentRate,
+  deleteInvestmentRate,
   createRate,
   updateRate,
   getAuditLogs,

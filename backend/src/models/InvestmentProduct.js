@@ -41,6 +41,12 @@ const InvestmentProduct = sequelize.define('InvestmentProduct', {
     allowNull: true,
     comment: 'Tasa referencial base en porcentaje anual',
   },
+  pagoIntereses: {
+    type: DataTypes.ENUM('AL_VENCIMIENTO', 'MENSUAL'),
+    allowNull: false,
+    defaultValue: 'AL_VENCIMIENTO',
+    comment: 'Forma de pago de los intereses del depósito',
+  },
   fuente: {
     type: DataTypes.STRING(150),
     allowNull: false,

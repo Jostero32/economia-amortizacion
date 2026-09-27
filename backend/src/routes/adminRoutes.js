@@ -12,6 +12,8 @@ const {
   validateInvestmentProductCreate,
   validateInvestmentProductUpdate,
   validateRateCreate,
+  validateInvestmentRateCreate,
+  validateInvestmentRateUpdate,
 } = require('../validators/productValidator');
 
 const adminController = require('../controllers/adminController');
@@ -72,9 +74,15 @@ router.put('/charges/:id', adminAuth, validateChargeUpdate, adminController.upda
 router.delete('/charges/:id', adminAuth, adminController.deleteCharge);
 
 // Productos de Inversión (Depósito a Plazo Fijo)
+router.get('/investments', adminAuth, adminController.getInvestmentProductsAdmin);
 router.post('/investments', adminAuth, validateInvestmentProductCreate, adminController.createInvestmentProduct);
 router.put('/investments/:id', adminAuth, validateInvestmentProductUpdate, adminController.updateInvestmentProduct);
 router.delete('/investments/:id', adminAuth, adminController.deleteInvestmentProduct);
+
+// Tramos de tasas por plazo de los productos de inversión (con histórico)
+router.post('/investments/:id/rates', adminAuth, validateInvestmentRateCreate, adminController.createInvestmentRate);
+router.put('/investments/:id/rates/:rateId', adminAuth, validateInvestmentRateUpdate, adminController.updateInvestmentRate);
+router.delete('/investments/:id/rates/:rateId', adminAuth, adminController.deleteInvestmentRate);
 
 // Auditoría
 router.get('/audit', adminAuth, adminController.getAuditLogs);

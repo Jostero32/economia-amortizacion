@@ -18,7 +18,7 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
   beforeAll(async () => {
     await initTestDatabase();
     await seedCompleteData();
-    sampleInvProduct = await InvestmentProduct.findOne({ where: { activo: true } });
+    sampleInvProduct = await InvestmentProduct.findOne({ where: { nombre: 'Depósito a Plazo Fijo' } });
   });
 
   afterAll(async () => {
@@ -63,6 +63,22 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
     expect(Number(sim.retencionIR)).toBe(4.95);
     expect(Number(sim.interesNeto)).toBe(160.05);
     expect(Number(sim.valorFinal)).toBe(15160.05);
+  });
+
+  test('el depósito con pago mensual devuelve el cronograma de pagos', async () => {
+    const monthly = await InvestmentProduct.findOne({ where: { nombre: 'Depósito a Plazo con Pago Mensual' } });
+    const res = await request(app)
+      .post('/api/simulations/investments')
+      .send({ investmentProductId: monthly.id, amount: 10000, termDays: 360 });
+
+    expect(res.status).toBe(201);
+    const sim = res.body.data.simulation;
+    expect(sim.pagoIntereses).toBe('MENSUAL');
+    expect(sim.cronogramaPagos).toHaveLength(12);
+    expect(res.body.data.product.pagoIntereses).toBe('MENSUAL');
+
+    const pdf = await request(app).get(`/api/simulations/investments/${sim.id}/pdf`);
+    expect(pdf.status).toBe(200);
   });
 
   test('rechaza simulación con monto menor al mínimo del producto de inversión (Código 400)', async () => {

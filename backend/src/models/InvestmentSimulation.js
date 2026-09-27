@@ -68,6 +68,16 @@ const InvestmentSimulation = sequelize.define('InvestmentSimulation', {
     allowNull: false,
     comment: 'Capital + interesNeto (valor a recibir al vencimiento)',
   },
+  pagoIntereses: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'AL_VENCIMIENTO o MENSUAL',
+  },
+  cronogramaPagos: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Pagos de intereses cada 30 días cuando el depósito paga mensualmente',
+  },
   fechaInicio: {
     type: DataTypes.DATEONLY,
     allowNull: false,

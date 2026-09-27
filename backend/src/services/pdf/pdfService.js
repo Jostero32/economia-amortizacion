@@ -354,16 +354,55 @@ function generateInvestmentSimulationPDF({ institution, simulation, application 
     ],
   ], y);
 
+  const pagoMensual = simulation.pagoIntereses === 'MENSUAL';
   doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 34).fill('#e6eeff');
   doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
-    .text('VALOR A RECIBIR AL VENCIMIENTO', PAGE_MARGIN + 12, y + 11);
+    .text(pagoMensual ? 'TOTAL A RECIBIR (CAPITAL + INTERESES NETOS)' : 'VALOR A RECIBIR AL VENCIMIENTO', PAGE_MARGIN + 12, y + 11);
   doc.text(formatMoney(simulation.valorFinal), PAGE_MARGIN + 300, y + 11, { width: CONTENT_WIDTH - 312, align: 'right' });
   y += 46;
+
+  const pagos = simulation.cronogramaPagos || [];
+  if (pagoMensual && pagos.length > 0) {
+    y = drawSectionTitle(doc, 'Pagos de intereses cada 30 días', y);
+    const columns = [
+      { header: 'N°', width: 40, align: 'center', value: (pago) => String(pago.numero) },
+      { header: 'Fecha', width: 90, align: 'left', value: (pago) => formatDisplayDate(pago.fecha) },
+      { header: 'Días', width: 55, align: 'right', value: (pago) => String(pago.dias) },
+      { header: 'Interés', width: 80, align: 'right', value: (pago) => formatMoney(pago.interes) },
+      { header: 'Retención', width: 80, align: 'right', value: (pago) => formatMoney(pago.retencion) },
+      { header: 'Capital', width: 80, align: 'right', value: (pago) => formatMoney(pago.capital) },
+      { header: 'Recibes', width: 90, align: 'right', value: (pago) => formatMoney(pago.totalRecibido), bold: true },
+    ];
+    const drawRow = (values, rowY, { background, bold = false, color = DARK } = {}) => {
+      if (background) doc.rect(PAGE_MARGIN, rowY - 3, CONTENT_WIDTH, 16).fill(background);
+      let x = PAGE_MARGIN;
+      columns.forEach((column, index) => {
+        doc.fillColor(color).font(bold || column.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8)
+          .text(values[index], x + 4, rowY, { width: column.width - 8, align: column.align, lineBreak: false });
+        x += column.width;
+      });
+    };
+    const drawHeaderRow = (rowY) => drawRow(columns.map((column) => column.header), rowY, { background: '#0b2545', bold: true, color: '#ffffff' });
+
+    drawHeaderRow(y);
+    y += 18;
+    pagos.forEach((pago, index) => {
+      if (y > PAGE_BOTTOM - 14) {
+        doc.addPage();
+        y = PAGE_MARGIN;
+        drawHeaderRow(y);
+        y += 18;
+      }
+      drawRow(columns.map((column) => column.value(pago)), y, { background: index % 2 === 1 ? '#f8fafc' : null });
+      y += 15;
+    });
+    y += 10;
+  }
 
   drawNote(
     doc,
     'CONDICIONES DE LA SIMULACIÓN',
-    'Interés simple con base comercial de 360 días, pagado al vencimiento. Se retiene el 3 % de los intereses como Impuesto a la Renta '
+    `Interés simple con base comercial de 360 días, ${pagoMensual ? 'pagado cada 30 días; el capital se devuelve al vencimiento' : 'pagado al vencimiento'}. Se retiene el 3 % de los intereses como Impuesto a la Renta `
       + 'cuando el plazo es menor a 180 días; desde 180 días están exentos. El seguro de depósitos COSEDE cubre hasta $32.000 por persona en cada entidad. '
       + 'Valores referenciales, no constituyen contrato. Proyecto académico de la materia Ingeniería Económica.',
     y,
