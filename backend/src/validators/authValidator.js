@@ -1,61 +1,65 @@
-const { body, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
-
-function validateResults(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(
-      res,
-      'Error de validación: ' + errors.array().map(e => e.msg).join(', '),
-      400,
-      errors.array()
-    );
-  }
-  next();
-}
+const { body } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
+const { PERSON_NAME_PATTERN, isValidCedula, isValidPhone } = require('../utils/identity');
 
 const validateRegister = [
   body('nombre')
     .trim()
     .notEmpty()
-    .withMessage('El nombre completo es obligatorio.')
-    .isLength({ min: 3 })
-    .withMessage('El nombre debe contener al menos 3 caracteres.'),
+    .withMessage('Ingresa tu nombre completo.')
+    .bail()
+    .isLength({ min: 3, max: 120 })
+    .withMessage('El nombre debe tener entre 3 y 120 caracteres.')
+    .bail()
+    .matches(PERSON_NAME_PATTERN)
+    .withMessage('El nombre solo puede contener letras y espacios.'),
   body('email')
     .trim()
     .notEmpty()
-    .withMessage('El correo electrónico es obligatorio.')
+    .withMessage('Ingresa tu correo electrónico.')
+    .bail()
     .isEmail()
-    .withMessage('Debe ingresar un correo electrónico válido.')
+    .withMessage('El correo electrónico no es válido.')
     .normalizeEmail(),
   body('password')
     .notEmpty()
-    .withMessage('La contraseña es obligatoria.')
-    .isLength({ min: 6 })
-    .withMessage('La contraseña debe tener al menos 6 caracteres.'),
+    .withMessage('Ingresa una contraseña.')
+    .bail()
+    .isLength({ min: 8, max: 72 })
+    .withMessage('La contraseña debe tener al menos 8 caracteres.')
+    .bail()
+    .matches(/[A-Za-z]/)
+    .withMessage('La contraseña debe incluir al menos una letra.')
+    .bail()
+    .matches(/\d/)
+    .withMessage('La contraseña debe incluir al menos un número.'),
   body('cedula')
-    .optional()
+    .optional({ values: 'falsy' })
     .trim()
-    .isLength({ min: 10, max: 10 })
-    .withMessage('La cédula ecuatoriana debe tener 10 dígitos.'),
+    .custom(isValidCedula)
+    .withMessage('La cédula no es válida. Revisa los 10 dígitos.'),
   body('telefono')
-    .optional()
-    .trim(),
-  validateResults,
+    .optional({ values: 'falsy' })
+    .trim()
+    .customSanitizer((value) => String(value).replace(/[\s-]/g, ''))
+    .custom(isValidPhone)
+    .withMessage('Ingresa un celular de 10 dígitos (09...) o un teléfono fijo con código de provincia.'),
+  validateRequest,
 ];
 
 const validateLogin = [
   body('email')
     .trim()
     .notEmpty()
-    .withMessage('El correo electrónico es obligatorio.')
+    .withMessage('Ingresa tu correo electrónico.')
+    .bail()
     .isEmail()
-    .withMessage('Debe ingresar un correo válido.')
+    .withMessage('El correo electrónico no es válido.')
     .normalizeEmail(),
   body('password')
     .notEmpty()
-    .withMessage('La contraseña es obligatoria.'),
-  validateResults,
+    .withMessage('Ingresa tu contraseña.'),
+  validateRequest,
 ];
 
 module.exports = {

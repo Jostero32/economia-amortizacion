@@ -1,111 +1,111 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { adminService, clientService } from '../../services/api';
 import Card from '../../components/Card';
 import Table from '../../components/Table';
+import Badge from '../../components/Badge';
 import Button from '../../components/Button';
-import { ShieldCheck, ExternalLink, Camera, CheckCircle2, XCircle } from 'lucide-react';
+import Alert from '../../components/Alert';
+import { LoadingState } from '../../components/Spinner';
+import { REQUIRED_DOCUMENTS, POLICY_DOCUMENT, DOCUMENT_STATUS } from '../../components/application/applicationStatus';
+import { formatDateTime } from '../../utils/format';
+
+const DOCUMENT_LABELS = Object.fromEntries(
+  [...REQUIRED_DOCUMENTS, POLICY_DOCUMENT].map((doc) => [doc.tipo, doc.label])
+);
+const FILTERS = [
+  { value: 'PENDIENTE', label: 'Por revisar' },
+  { value: 'RECHAZADO', label: 'Rechazados' },
+  { value: 'VALIDADO', label: 'Validados' },
+  { value: 'TODOS', label: 'Todos' },
+];
 
 export default function DocumentsList() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const loadDocuments = () => {
-    adminService
-      .getDocuments()
-      .then((res) => {
-        if (res.success) setDocuments(res.data.documents || []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  };
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('PENDIENTE');
 
   useEffect(() => {
-    loadDocuments();
+    adminService
+      .getDocuments()
+      .then((res) => setDocuments(res.data.documents || []))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleUpdateDocStatus = async (id, estado) => {
-    try {
-      await adminService.updateDocumentStatus(id, { estado });
-      loadDocuments();
-    } catch (err) {
-      alert(err.message || 'Error al actualizar documento');
-    }
-  };
+  if (loading) {
+    return <LoadingState message="Cargando documentos..." />;
+  }
+
+  const visible = filter === 'TODOS' ? documents : documents.filter((doc) => doc.estado === filter);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Bandeja de Documentos y Biometría</h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Revisión de documentos de identidad, comprobantes y selfies de validación biométrica simulada.
+    <div className="space-y-space-md max-w-[1440px] mx-auto">
+      <div className="bg-surface-container-lowest p-space-lg rounded-xl border border-surface-container-high shadow-xs">
+        <h1 className="font-headline-lg text-[24px] sm:text-[28px] text-primary font-bold">Documentos recibidos</h1>
+        <p className="text-[13px] text-on-surface-variant mt-0.5">
+          Documentos subidos por los clientes. La validación se hace desde cada solicitud.
         </p>
       </div>
 
-      <Card title={`Documentos Subidos por Clientes (${documents.length})`}>
-        {loading ? (
-          <div className="py-8 text-center text-xs text-slate-500">Cargando...</div>
-        ) : documents.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500">No hay documentos registrados.</div>
+      {error && <Alert type="error">{error}</Alert>}
+
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setFilter(option.value)}
+            className={`px-3 py-1.5 rounded-lg text-[13px] border ${
+              filter === option.value ? 'bg-secondary text-white border-secondary' : 'bg-white text-primary border-gray-200'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <Card title={`${visible.length} documento(s)`}>
+        {visible.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-on-surface-variant">No hay documentos en esta categoría.</p>
         ) : (
-          <Table headers={['Tipo', 'Archivo / Tamaño', 'Solicitud Vinculada', 'Fecha', 'Estado', 'Acción Rápida', 'Ver']}>
-            {documents.map((doc) => (
-              <tr key={doc.id} className="hover:bg-slate-50 transition">
-                <td className="px-3.5 py-3 font-bold text-slate-900 text-xs">
-                  {doc.tipo === 'SELFIE' ? '📸 FOTO SELFIE (Biometría)' : doc.tipo}
-                </td>
-                <td className="px-3.5 py-3 text-xs">
-                  <div className="text-slate-800 font-medium truncate max-w-[150px]">{doc.nombreArchivo}</div>
-                  <div className="text-[10px] text-slate-400">{(doc.tamano / 1024).toFixed(1)} KB</div>
-                </td>
-                <td className="px-3.5 py-3 text-xs text-slate-600 font-mono">
-                  {doc.creditApplication?.codigo || doc.investmentApplication?.codigo || 'Expediente'}
-                </td>
-                <td className="px-3.5 py-3 text-[11px] text-slate-500">
-                  {new Date(doc.createdAt).toLocaleDateString('es-EC')}
-                </td>
-                <td className="px-3.5 py-3">
-                  <span
-                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      doc.estado === 'VALIDADO'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : doc.estado === 'RECHAZADO'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {doc.estado}
-                  </span>
-                </td>
-                <td className="px-3.5 py-3">
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateDocStatus(doc.id, 'VALIDADO')}
-                      className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[10px] font-bold rounded"
-                    >
-                      Aprobar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateDocStatus(doc.id, 'RECHAZADO')}
-                      className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 text-[10px] font-bold rounded"
-                    >
-                      Rechazar
-                    </button>
-                  </div>
-                </td>
-                <td className="px-3.5 py-3">
-                  <a
-                    href={clientService.getDocumentUrl(doc.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-brand-700 hover:text-brand-900 inline-flex items-center text-xs font-semibold"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
-                  </a>
-                </td>
-              </tr>
-            ))}
+          <Table headers={['Documento', 'Solicitud', 'Recibido', 'Estado', { label: 'Acciones', align: 'text-right' }]}>
+            {visible.map((doc) => {
+              const application = doc.creditApplication || doc.investmentApplication;
+              const reviewPath = doc.creditApplication
+                ? `/admin/solicitudes/${doc.creditApplicationId}`
+                : `/admin/solicitudes/inversion/${doc.investmentApplicationId}`;
+              const status = DOCUMENT_STATUS[doc.estado];
+              return (
+                <tr key={doc.id} className="hover:bg-surface-container-low/40">
+                  <td className="py-3 px-4 text-[13px]">
+                    <span className="block font-medium text-primary">{DOCUMENT_LABELS[doc.tipo] || 'Otro documento'}</span>
+                    <span className="block text-[11px] text-on-surface-variant truncate max-w-[220px]">{doc.nombreArchivo}</span>
+                  </td>
+                  <td className="py-3 px-4 text-[13px]">
+                    <span className="block font-numeric-data text-primary">{application?.codigo || '—'}</span>
+                    <span className="block text-[11px] text-on-surface-variant">
+                      {application ? `${application.nombres} ${application.apellidos}` : ''}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-[12px] text-on-surface-variant">{formatDateTime(doc.createdAt)}</td>
+                  <td className="py-3 px-4">
+                    <Badge variant={status?.variant} size="sm">{status?.label || doc.estado}</Badge>
+                  </td>
+                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                    <a href={clientService.getDocumentUrl(doc.id)} target="_blank" rel="noreferrer" className="text-[12px] text-secondary hover:underline mr-3">
+                      Ver archivo
+                    </a>
+                    {application && (
+                      <Link to={reviewPath}>
+                        <Button variant="outline" size="sm">Revisar solicitud</Button>
+                      </Link>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </Table>
         )}
       </Card>

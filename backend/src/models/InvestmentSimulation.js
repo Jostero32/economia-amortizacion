@@ -29,6 +29,11 @@ const InvestmentSimulation = sequelize.define('InvestmentSimulation', {
     allowNull: false,
     comment: 'Capital invertido',
   },
+  aporteMensual: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Aporte mensual del ahorro programado (monto guarda el total aportado)',
+  },
   plazoDias: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -43,10 +48,40 @@ const InvestmentSimulation = sequelize.define('InvestmentSimulation', {
     allowNull: false,
     comment: 'Capital * tasaAnual * dias / 360',
   },
+  tasaEfectiva: {
+    type: DataTypes.DECIMAL(8, 4),
+    allowNull: true,
+    comment: 'TEA del depósito con pago al vencimiento (BCE, Anexo 1)',
+  },
+  tasaRetencion: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    comment: 'Porcentaje de retención IR aplicado (0 si el plazo es >= 180 días)',
+  },
+  retencionIR: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Retención en la fuente del Impuesto a la Renta sobre el interés',
+  },
+  interesNeto: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'interesGanado - retencionIR',
+  },
   valorFinal: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
-    comment: 'Capital + interesGanado',
+    comment: 'Capital + interesNeto (valor a recibir al vencimiento)',
+  },
+  pagoIntereses: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'AL_VENCIMIENTO o MENSUAL',
+  },
+  cronogramaPagos: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Pagos de intereses cada 30 días cuando el depósito paga mensualmente',
   },
   fechaInicio: {
     type: DataTypes.DATEONLY,

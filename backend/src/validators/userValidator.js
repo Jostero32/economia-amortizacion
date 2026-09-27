@@ -1,13 +1,5 @@
-const { body, param, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
-
-function validateResults(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(res, 'Datos de acceso de usuario inválidos.', 400, errors.array());
-  }
-  return next();
-}
+const { body, param } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
 
 const validateUserAccessUpdate = [
   param('id').isUUID().withMessage('El identificador del usuario no es válido.'),
@@ -26,7 +18,7 @@ const validateUserAccessUpdate = [
     }
     return true;
   }),
-  validateResults,
+  validateRequest,
 ];
 
 module.exports = { validateUserAccessUpdate };

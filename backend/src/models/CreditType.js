@@ -50,6 +50,19 @@ const CreditType = sequelize.define('CreditType', {
     defaultValue: 72,
     comment: 'Plazo máximo en meses',
   },
+  frecuenciasPago: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    defaultValue: 'MENSUAL',
+    comment: 'Frecuencias de pago permitidas separadas por comas: MENSUAL, BIMESTRAL, TRIMESTRAL, SEMESTRAL',
+    get() {
+      const value = this.getDataValue('frecuenciasPago');
+      return value ? value.split(',').filter(Boolean) : ['MENSUAL'];
+    },
+    set(value) {
+      this.setDataValue('frecuenciasPago', Array.isArray(value) ? value.join(',') : value);
+    },
+  },
   icono: {
     type: DataTypes.STRING(50),
     allowNull: true,

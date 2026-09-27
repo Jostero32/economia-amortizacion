@@ -5,6 +5,16 @@ const { requireRole } = require('../middleware/roleMiddleware');
 const { imageUpload } = require('../middleware/uploadMiddleware');
 const { validateInstitution } = require('../validators/institutionValidator');
 const { validateUserAccessUpdate } = require('../validators/userValidator');
+const { validateChargeCreate, validateChargeUpdate } = require('../validators/chargeValidator');
+const {
+  validateCreditProductCreate,
+  validateCreditProductUpdate,
+  validateInvestmentProductCreate,
+  validateInvestmentProductUpdate,
+  validateRateCreate,
+  validateInvestmentRateCreate,
+  validateInvestmentRateUpdate,
+} = require('../validators/productValidator');
 
 const adminController = require('../controllers/adminController');
 const applicationController = require('../controllers/applicationController');
@@ -49,23 +59,30 @@ router.post('/institution/logo', adminAuth, imageUpload.single('logo'), adminCon
 router.patch('/users/:id/access', adminAuth, validateUserAccessUpdate, adminController.updateUserAccess);
 
 // Productos de Crédito
-router.post('/credit-products', adminAuth, adminController.createCreditProduct);
-router.put('/credit-products/:id', adminAuth, adminController.updateCreditProduct);
+router.post('/credit-products', adminAuth, validateCreditProductCreate, adminController.createCreditProduct);
+router.put('/credit-products/:id', adminAuth, validateCreditProductUpdate, adminController.updateCreditProduct);
 router.delete('/credit-products/:id', adminAuth, adminController.deleteCreditProduct);
 
 // Tasas con vigencia histórica
-router.post('/rates', adminAuth, adminController.createRate);
+router.post('/rates', adminAuth, validateRateCreate, adminController.createRate);
 router.put('/rates/:id', adminAuth, adminController.updateRate);
 
 // Cobros Adicionales (SOLCA, Desgravamen, etc.)
-router.post('/charges', adminAuth, adminController.createCharge);
-router.put('/charges/:id', adminAuth, adminController.updateCharge);
+router.get('/charges', adminAuth, adminController.getCharges);
+router.post('/charges', adminAuth, validateChargeCreate, adminController.createCharge);
+router.put('/charges/:id', adminAuth, validateChargeUpdate, adminController.updateCharge);
 router.delete('/charges/:id', adminAuth, adminController.deleteCharge);
 
 // Productos de Inversión (Depósito a Plazo Fijo)
-router.post('/investments', adminAuth, adminController.createInvestmentProduct);
-router.put('/investments/:id', adminAuth, adminController.updateInvestmentProduct);
+router.get('/investments', adminAuth, adminController.getInvestmentProductsAdmin);
+router.post('/investments', adminAuth, validateInvestmentProductCreate, adminController.createInvestmentProduct);
+router.put('/investments/:id', adminAuth, validateInvestmentProductUpdate, adminController.updateInvestmentProduct);
 router.delete('/investments/:id', adminAuth, adminController.deleteInvestmentProduct);
+
+// Tramos de tasas por plazo de los productos de inversión (con histórico)
+router.post('/investments/:id/rates', adminAuth, validateInvestmentRateCreate, adminController.createInvestmentRate);
+router.put('/investments/:id/rates/:rateId', adminAuth, validateInvestmentRateUpdate, adminController.updateInvestmentRate);
+router.delete('/investments/:id/rates/:rateId', adminAuth, adminController.deleteInvestmentRate);
 
 // Auditoría
 router.get('/audit', adminAuth, adminController.getAuditLogs);

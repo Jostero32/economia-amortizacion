@@ -1,119 +1,211 @@
-const { body, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
+const { body } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
+const { todayISO, ageOn } = require('../utils/dates');
+const { PERSON_NAME_PATTERN, isValidCedula, isValidPhone } = require('../utils/identity');
+const { FREQUENCY_CODES } = require('../services/amortization/frequencies');
 
-function validateResults(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(
-      res,
-      'Datos de solicitud incompletos o inválidos: ' + errors.array().map(e => e.msg).join(', '),
-      400,
-      errors.array()
-    );
-  }
-  next();
+const MIN_AGE = 18;
+const MAX_AGE = 100;
+const ESTADOS_CIVILES = ['Soltero/a', 'Casado/a', 'Unión de hecho', 'Divorciado/a', 'Viudo/a'];
+const MONEY_FORMAT = { decimal_digits: '0,2' };
+
+function isAccepted(value) {
+  return value === true || value === 'true';
 }
+
+function nameRule(field, label) {
+  return body(field)
+    .trim()
+    .notEmpty()
+    .withMessage(`Ingresa tus ${label}.`)
+    .bail()
+    .isLength({ min: 2, max: 100 })
+    .withMessage(`Tus ${label} deben tener entre 2 y 100 caracteres.`)
+    .bail()
+    .matches(PERSON_NAME_PATTERN)
+    .withMessage(`Tus ${label} solo pueden contener letras y espacios.`);
+}
+
+// Datos de identificación y contacto comunes a créditos e inversiones
+const personalDataRules = [
+  body('simulationId').optional({ values: 'falsy' }).isUUID().withMessage('La simulación indicada no es válida.'),
+  nameRule('nombres', 'nombres'),
+  nameRule('apellidos', 'apellidos'),
+  body('cedula')
+    .trim()
+    .notEmpty()
+    .withMessage('Ingresa tu número de cédula.')
+    .bail()
+    .custom(isValidCedula)
+    .withMessage('La cédula no es válida. Revisa los 10 dígitos.'),
+  body('telefono')
+    .trim()
+    .notEmpty()
+    .withMessage('Ingresa tu número de teléfono.')
+    .bail()
+    .customSanitizer((value) => String(value).replace(/[\s-]/g, ''))
+    .custom(isValidPhone)
+    .withMessage('Ingresa un celular de 10 dígitos (09...) o un teléfono fijo con código de provincia.'),
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Ingresa tu correo electrónico.')
+    .bail()
+    .isEmail()
+    .withMessage('El correo electrónico no es válido.'),
+  body('actividadEconomica')
+    .trim()
+    .notEmpty()
+    .withMessage('Indica tu actividad económica.')
+    .bail()
+    .isLength({ max: 150 })
+    .withMessage('La actividad económica admite máximo 150 caracteres.'),
+  body('ingresosMensuales')
+    .notEmpty()
+    .withMessage('Ingresa tus ingresos mensuales.')
+    .bail()
+    .isDecimal(MONEY_FORMAT)
+    .withMessage('Los ingresos deben ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0, max: 1000000 })
+    .withMessage('Tus ingresos mensuales deben ser mayores a $0.'),
+];
 
 const validateCreditApplication = [
   body('creditTypeId')
     .notEmpty()
-    .withMessage('El ID del tipo de crédito es obligatorio.')
+    .withMessage('Selecciona el tipo de crédito.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El ID del tipo de crédito debe ser un número entero válido.'),
+    .withMessage('El tipo de crédito no es válido.'),
   body('monto')
     .notEmpty()
-    .withMessage('El monto solicitado es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto debe ser mayor a cero.'),
+    .withMessage('Ingresa el monto solicitado.')
+    .bail()
+    .isDecimal(MONEY_FORMAT)
+    .withMessage('El monto debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El monto debe ser mayor a $0.'),
   body('plazoMeses')
     .notEmpty()
-    .withMessage('El plazo en meses es obligatorio.')
+    .withMessage('Ingresa el plazo en meses.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El plazo debe ser mayor a cero.'),
+    .withMessage('El plazo debe ser un número entero de meses.'),
   body('sistemaAmortizacion')
     .notEmpty()
-    .withMessage('El sistema de amortización es obligatorio.')
+    .withMessage('Elige el tipo de cuota.')
+    .bail()
     .toUpperCase()
     .isIn(['FRANCES', 'ALEMAN'])
     .withMessage('El sistema de amortización debe ser FRANCES o ALEMAN.'),
-  body('nombres')
-    .trim()
+  body('frecuenciaPago')
+    .optional({ values: 'falsy' })
+    .toUpperCase()
+    .isIn(FREQUENCY_CODES)
+    .withMessage('La frecuencia de pago debe ser mensual, bimestral, trimestral o semestral.'),
+  body('polizaDesgravamenPropia').optional().isBoolean().withMessage('Indica si tienes una póliza de desgravamen propia.').toBoolean(),
+  ...personalDataRules,
+  body('fechaNacimiento')
     .notEmpty()
-    .withMessage('Los nombres son obligatorios.'),
-  body('apellidos')
-    .trim()
-    .notEmpty()
-    .withMessage('Los apellidos son obligatorios.'),
-  body('cedula')
-    .trim()
-    .notEmpty()
-    .withMessage('La cédula de identidad es obligatoria.')
-    .isLength({ min: 10, max: 10 })
-    .withMessage('La cédula ecuatoriana debe tener 10 dígitos.'),
+    .withMessage('Ingresa tu fecha de nacimiento.')
+    .bail()
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('La fecha de nacimiento debe tener el formato AAAA-MM-DD.')
+    .bail()
+    .isISO8601({ strict: true })
+    .withMessage('La fecha de nacimiento no existe.')
+    .bail()
+    .custom((value) => value < todayISO())
+    .withMessage('La fecha de nacimiento no puede ser hoy ni una fecha futura.')
+    .bail()
+    .custom((value) => ageOn(value) >= MIN_AGE)
+    .withMessage('Debes ser mayor de edad para solicitar un crédito.')
+    .bail()
+    .custom((value) => ageOn(value) <= MAX_AGE)
+    .withMessage('Revisa la fecha de nacimiento.'),
+  body('estadoCivil')
+    .optional({ values: 'falsy' })
+    .isIn(ESTADOS_CIVILES)
+    .withMessage('Selecciona un estado civil válido.'),
   body('direccion')
     .trim()
     .notEmpty()
-    .withMessage('La dirección de domicilio es obligatoria.'),
+    .withMessage('Ingresa tu dirección de domicilio.')
+    .bail()
+    .isLength({ min: 5, max: 255 })
+    .withMessage('La dirección debe tener entre 5 y 255 caracteres.'),
   body('ciudad')
     .trim()
     .notEmpty()
-    .withMessage('La ciudad es obligatoria.'),
-  body('telefono')
-    .trim()
-    .notEmpty()
-    .withMessage('El número de teléfono es obligatorio.'),
-  body('email')
-    .trim()
-    .notEmpty()
-    .withMessage('El correo electrónico es obligatorio.')
-    .isEmail()
-    .withMessage('El correo electrónico no es válido.'),
-  body('ingresosMensuales')
-    .notEmpty()
-    .withMessage('Los ingresos mensuales son obligatorios.')
-    .isFloat({ min: 0 })
-    .withMessage('Los ingresos mensuales deben ser un valor positivo.'),
+    .withMessage('Ingresa tu ciudad.')
+    .bail()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('La ciudad debe tener entre 2 y 100 caracteres.')
+    .bail()
+    .matches(PERSON_NAME_PATTERN)
+    .withMessage('La ciudad solo puede contener letras y espacios.'),
   body('egresosMensuales')
     .notEmpty()
-    .withMessage('Los egresos mensuales son obligatorios.')
-    .isFloat({ min: 0 })
-    .withMessage('Los egresos mensuales deben ser un valor positivo.'),
-  validateResults,
+    .withMessage('Ingresa tus gastos mensuales (puede ser 0).')
+    .bail()
+    .isDecimal(MONEY_FORMAT)
+    .withMessage('Los gastos deben ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ min: 0, max: 1000000 })
+    .withMessage('Los gastos mensuales no pueden ser negativos.'),
+  body('autorizaConsultaBuro')
+    .custom(isAccepted)
+    .withMessage('Debes autorizar la consulta de tu historial crediticio para continuar.'),
+  validateRequest,
 ];
 
 const validateInvestmentApplication = [
   body('investmentProductId')
     .notEmpty()
-    .withMessage('El producto de inversión es obligatorio.')
+    .withMessage('Selecciona el producto de inversión.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('ID de producto inválido.'),
+    .withMessage('El producto de inversión no es válido.'),
   body('monto')
     .notEmpty()
-    .withMessage('El monto es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto debe ser mayor a cero.'),
+    .withMessage('Ingresa el monto a invertir.')
+    .bail()
+    .isDecimal(MONEY_FORMAT)
+    .withMessage('El monto debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El monto debe ser mayor a $0.'),
   body('plazoDias')
     .notEmpty()
-    .withMessage('El plazo en días es obligatorio.')
+    .withMessage('Ingresa el plazo en días.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El plazo debe ser mayor a cero.'),
-  body('nombres').trim().notEmpty().withMessage('Los nombres son obligatorios.'),
-  body('apellidos').trim().notEmpty().withMessage('Los apellidos son obligatorios.'),
-  body('cedula').trim().notEmpty().withMessage('La cédula es obligatoria.').isLength({ min: 10, max: 10 }).withMessage('La cédula debe tener 10 dígitos.'),
-  body('telefono').trim().notEmpty().withMessage('El teléfono es obligatorio.'),
-  body('email').trim().notEmpty().isEmail().withMessage('El correo es obligatorio y debe ser válido.'),
-  body('actividadEconomica').trim().notEmpty().withMessage('La actividad económica es obligatoria.'),
-  body('ingresosMensuales')
+    .withMessage('El plazo debe ser un número entero de días.'),
+  ...personalDataRules,
+  body('origenFondos')
+    .trim()
     .notEmpty()
-    .withMessage('Los ingresos mensuales son obligatorios.')
-    .isFloat({ min: 0 })
-    .withMessage('Los ingresos mensuales deben ser un valor positivo.'),
-  body('origenFondos').trim().notEmpty().withMessage('El origen de los fondos es obligatorio.'),
-  body('finalidadInversion').trim().notEmpty().withMessage('La finalidad de la inversión es obligatoria.'),
-  validateResults,
+    .withMessage('Indica el origen de los fondos.')
+    .bail()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('Describe el origen de los fondos en 5 a 500 caracteres.'),
+  body('finalidadInversion')
+    .trim()
+    .notEmpty()
+    .withMessage('Indica la finalidad de la inversión.')
+    .bail()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('Describe la finalidad de la inversión en 5 a 500 caracteres.'),
+  body('declaraLicitudFondos')
+    .custom(isAccepted)
+    .withMessage('Debes declarar que los fondos tienen un origen lícito para continuar.'),
+  validateRequest,
 ];
 
 module.exports = {
+  ESTADOS_CIVILES,
   validateCreditApplication,
   validateInvestmentApplication,
 };

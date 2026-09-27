@@ -4,6 +4,7 @@ import { publicService } from '../../services/api';
 import Button from '../../components/Button';
 import { LoadingState } from '../../components/Spinner';
 import { ErrorState } from '../../components/EmptyState';
+import { formatPercent } from '../../utils/format';
 
 export default function InvestmentCatalog() {
   const [products, setProducts] = useState([]);
@@ -70,7 +71,7 @@ export default function InvestmentCatalog() {
           const highestRate =
             product.rates && product.rates.length > 0
               ? Math.max(...product.rates.map((r) => Number(r.tasa)))
-              : 8.65;
+              : Number(product.tasa || 0);
 
           return (
             <div
@@ -85,7 +86,9 @@ export default function InvestmentCatalog() {
                       {product.nombre}
                     </h2>
                     <p className="text-[13px] text-on-surface-variant mt-0.5">
-                      Renta fija en dólares • Depósito a plazo (DPF)
+                      {product.tipo === 'AHORRO_PROGRAMADO'
+                        ? 'Aportes mensuales con interés capitalizable'
+                        : product.pagoIntereses === 'MENSUAL' ? 'Intereses pagados cada mes' : 'Capital e intereses al vencimiento'}
                     </p>
                   </div>
                   <div className="w-10 h-10 rounded-xl bg-blue-50 text-secondary flex items-center justify-center flex-shrink-0">
@@ -97,14 +100,14 @@ export default function InvestmentCatalog() {
                 <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100/80">
                   <div className="flex items-baseline justify-between">
                     <div className="text-[32px] font-bold text-secondary tracking-tight font-numeric-data">
-                      Hasta {highestRate.toFixed(2)}%
+                      Hasta {formatPercent(highestRate)}
                     </div>
                     <span className="material-symbols-outlined text-secondary text-[20px]">
                       trending_up
                     </span>
                   </div>
                   <div className="text-[13px] text-on-surface-variant font-medium">
-                    Rendimiento anual estimado
+                    Tasa nominal anual según el plazo
                   </div>
                 </div>
 
@@ -113,7 +116,7 @@ export default function InvestmentCatalog() {
                   <div className="flex justify-between items-center">
                     <span className="text-on-surface-variant flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[16px] text-secondary">payments</span>
-                      Monto mínimo:
+                      {product.tipo === 'AHORRO_PROGRAMADO' ? 'Aporte mensual desde:' : 'Monto mínimo:'}
                     </span>
                     <span className="font-semibold text-primary font-numeric-data">
                       {formatUSD(product.montoMinimo || 500)}
@@ -125,7 +128,9 @@ export default function InvestmentCatalog() {
                       Plazos:
                     </span>
                     <span className="font-semibold text-primary font-numeric-data">
-                      Desde 30 hasta 720+ días
+                      {product.tipo === 'AHORRO_PROGRAMADO'
+                        ? `${Math.ceil(product.plazoMinimoDias / 30)} a ${Math.floor(product.plazoMaximoDias / 30)} meses`
+                        : `${product.plazoMinimoDias} a ${product.plazoMaximoDias} días`}
                     </span>
                   </div>
                 </div>
@@ -133,13 +138,17 @@ export default function InvestmentCatalog() {
                 {/* Nivel 3: Garantía y Beneficios */}
                 <div className="text-[12px] text-gray-500 pt-2 border-t border-gray-100 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px] text-emerald-600">verified_user</span>
-                  <span>Protegido por COSEDE • Exento de retención SRI (≥ 180 días)</span>
+                  <span>Seguro COSEDE hasta $32.000 • Sin retención de IR desde 180 días</span>
                 </div>
               </div>
 
               {/* Acción Principal */}
               <div className="pt-6 mt-4 border-t border-gray-100">
-                <Link to={`/inversiones/simulador?productId=${product.id}`}>
+                <Link
+                  to={product.tipo === 'AHORRO_PROGRAMADO'
+                    ? `/inversiones/ahorro?productId=${product.id}`
+                    : `/inversiones/simulador?productId=${product.id}`}
+                >
                   <Button variant="fintech" className="w-full" iconName="trending_up">
                     Simular inversión
                   </Button>

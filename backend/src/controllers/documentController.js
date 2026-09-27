@@ -1,6 +1,8 @@
-const path = require('path');
-const fs = require('fs');
 const { Document, CreditApplication, InvestmentApplication } = require('../models');
+const { resolveDocumentPath } = require('../services/storage/documentStorage');
+
+// Una solicitud aprobada o rechazada ya no recibe documentos
+const CLOSED_STATUSES = ['APROBADA', 'RECHAZADA'];
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -15,26 +17,28 @@ async function uploadDocument(req, res, next) {
 
     const { tipo, creditApplicationId, investmentApplicationId } = req.body;
 
-    const validTypes = ['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'OTRO'];
+    const validTypes = ['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'POLIZA_DESGRAVAMEN', 'OTRO'];
     if (!validTypes.includes(tipo)) {
       return errorResponse(res, `Tipo de documento inválido. Opciones: ${validTypes.join(', ')}`, 400);
     }
 
     // Validar existencia de solicitud y pertenencia
+    let application;
     if (creditApplicationId) {
-      const app = await CreditApplication.findByPk(creditApplicationId);
-      if (!app) return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
-      if (req.user.rol === 'CLIENTE' && app.userId !== req.user.id) {
-        return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
-      }
+      application = await CreditApplication.findByPk(creditApplicationId);
+      if (!application) return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
     } else if (investmentApplicationId) {
-      const app = await InvestmentApplication.findByPk(investmentApplicationId);
-      if (!app) return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
-      if (req.user.rol === 'CLIENTE' && app.userId !== req.user.id) {
-        return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
-      }
+      application = await InvestmentApplication.findByPk(investmentApplicationId);
+      if (!application) return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
     } else {
       return errorResponse(res, 'Debe asociar el documento a una solicitud de crédito o inversión.', 400);
+    }
+
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
+    }
+    if (CLOSED_STATUSES.includes(application.estado)) {
+      return errorResponse(res, 'La solicitud ya fue resuelta; no se pueden agregar documentos.', 400);
     }
 
     const doc = await Document.create({
@@ -73,14 +77,27 @@ async function uploadDocument(req, res, next) {
 async function getDocumentFile(req, res, next) {
   try {
     const { id } = req.params;
-    const doc = await Document.findByPk(id);
+    const doc = await Document.findByPk(id, {
+      include: [
+        { model: CreditApplication, as: 'creditApplication', attributes: ['userId'] },
+        { model: InvestmentApplication, as: 'investmentApplication', attributes: ['userId'] },
+      ],
+    });
 
     if (!doc) {
       return errorResponse(res, 'Documento no encontrado.', 404);
     }
 
-    const filePath = path.resolve(__dirname, '../../uploads', doc.ruta);
-    if (!fs.existsSync(filePath)) {
+    // Un cliente solo puede ver los documentos de sus propias solicitudes
+    if (req.user.rol === 'CLIENTE') {
+      const ownerId = doc.creditApplication?.userId || doc.investmentApplication?.userId;
+      if (ownerId !== req.user.id) {
+        return errorResponse(res, 'No tiene permiso para ver este documento.', 403);
+      }
+    }
+
+    const filePath = resolveDocumentPath(doc.ruta);
+    if (!filePath) {
       return errorResponse(res, 'El archivo físico no se encuentra en el servidor.', 404);
     }
 
@@ -121,6 +138,16 @@ async function updateDocumentStatus(req, res, next) {
     const validStates = ['PENDIENTE', 'VALIDADO', 'RECHAZADO'];
     if (!validStates.includes(estado)) {
       return errorResponse(res, `Estado inválido. Opciones permitidas: ${validStates.join(', ')}`, 400);
+    }
+
+    // El cliente necesita saber qué corregir para volver a subir el documento
+    if (estado === 'RECHAZADO' && !String(comentarioRevision || '').trim()) {
+      return errorResponse(
+        res,
+        'Indica el motivo del rechazo para que el cliente pueda corregir el documento.',
+        400,
+        { comentarioRevision: 'El motivo del rechazo es obligatorio.' }
+      );
     }
 
     const doc = await Document.findByPk(id);

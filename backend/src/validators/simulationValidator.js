@@ -1,72 +1,137 @@
-const { body, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
+const { body } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
+const { todayISO, addDays } = require('../utils/dates');
+const { FREQUENCY_CODES } = require('../services/amortization/frequencies');
 
-function validateResults(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(
-      res,
-      'Datos de simulación inválidos: ' + errors.array().map(e => e.msg).join(', '),
-      400,
-      errors.array()
-    );
-  }
-  next();
+// Una operación se puede programar hasta 90 días después de hoy
+const MAX_START_DAYS = 90;
+const AMOUNT_FORMAT = { decimal_digits: '0,2' };
+
+/**
+ * Fecha de desembolso o apertura: formato YYYY-MM-DD, desde hoy (hora de Ecuador) hasta 90 días
+ * @param {string} label - "desembolso" o "apertura"
+ */
+function startDateRule(label) {
+  return body('startDate')
+    .optional({ values: 'falsy' })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('La fecha debe tener el formato AAAA-MM-DD.')
+    .bail()
+    .isISO8601({ strict: true })
+    .withMessage('La fecha indicada no existe.')
+    .bail()
+    .custom((value) => value >= todayISO())
+    .withMessage(`La fecha de ${label} no puede ser anterior a hoy.`)
+    .bail()
+    .custom((value) => value <= addDays(todayISO(), MAX_START_DAYS))
+    .withMessage(`La fecha de ${label} no puede superar ${MAX_START_DAYS} días desde hoy.`);
 }
 
-const validateCreditSimulation = [
+function amountRule(emptyMessage) {
+  return body('amount')
+    .notEmpty()
+    .withMessage(emptyMessage)
+    .bail()
+    .isDecimal(AMOUNT_FORMAT)
+    .withMessage('El monto debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El monto debe ser mayor a $0.');
+}
+
+const creditRules = [
   body('creditTypeId')
     .notEmpty()
-    .withMessage('El tipo de crédito es obligatorio.')
+    .withMessage('Selecciona un tipo de crédito.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El ID del tipo de crédito debe ser un número entero válido.'),
-  body('amount')
-    .notEmpty()
-    .withMessage('El monto del crédito es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto debe ser un valor numérico mayor a 0.'),
+    .withMessage('El tipo de crédito seleccionado no es válido.'),
+  amountRule('Ingresa el monto del crédito.'),
   body('termMonths')
     .notEmpty()
-    .withMessage('El plazo en meses es obligatorio.')
+    .withMessage('Ingresa el plazo en meses.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El plazo debe ser un número entero positivo mayor a 0.'),
+    .withMessage('El plazo debe ser un número entero de meses.'),
+  startDateRule('desembolso'),
+  body('frecuenciaPago')
+    .optional({ values: 'falsy' })
+    .toUpperCase()
+    .isIn(FREQUENCY_CODES)
+    .withMessage('La frecuencia de pago debe ser mensual, bimestral, trimestral o semestral.'),
+  body('polizaDesgravamenPropia')
+    .optional()
+    .isBoolean()
+    .withMessage('Indica si tienes una póliza de desgravamen propia.')
+    .toBoolean(),
+  body('cargosOpcionales')
+    .optional()
+    .isArray()
+    .withMessage('Los cargos opcionales deben enviarse como una lista.'),
+  body('cargosOpcionales.*')
+    .isInt({ min: 1 })
+    .withMessage('Cada cargo opcional debe ser un identificador válido.'),
+];
+
+const validateCreditSimulation = [
+  ...creditRules,
   body('amortizationSystem')
     .notEmpty()
-    .withMessage('El sistema de amortización es obligatorio.')
+    .withMessage('Elige el tipo de cuota: fija (francés) o decreciente (alemán).')
+    .bail()
     .toUpperCase()
     .isIn(['FRANCES', 'ALEMAN'])
     .withMessage('El sistema de amortización debe ser FRANCES o ALEMAN.'),
-  body('startDate')
-    .optional()
-    .isISO8601()
-    .withMessage('La fecha de inicio debe tener formato válido YYYY-MM-DD.'),
-  validateResults,
+  validateRequest,
 ];
+
+// La comparación calcula ambos sistemas, por eso no pide el sistema de amortización
+const validateCreditComparison = [...creditRules, validateRequest];
 
 const validateInvestmentSimulation = [
   body('investmentProductId')
     .notEmpty()
-    .withMessage('El producto de inversión es obligatorio.')
+    .withMessage('Selecciona un producto de inversión.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El ID del producto de inversión debe ser un número entero.'),
-  body('amount')
-    .notEmpty()
-    .withMessage('El monto de inversión es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto a invertir debe ser mayor a 0.'),
+    .withMessage('El producto de inversión seleccionado no es válido.'),
+  amountRule('Ingresa el monto a invertir.'),
   body('termDays')
     .notEmpty()
-    .withMessage('El plazo en días es obligatorio.')
+    .withMessage('Ingresa el plazo en días.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El plazo debe ser mayor a 0 días.'),
-  body('startDate')
-    .optional()
-    .isISO8601()
-    .withMessage('La fecha de inicio debe tener formato válido YYYY-MM-DD.'),
-  validateResults,
+    .withMessage('El plazo debe ser un número entero de días.'),
+  startDateRule('apertura'),
+  validateRequest,
+];
+
+const validateCreditPrepayment = [
+  body('despuesDeCuota')
+    .notEmpty()
+    .withMessage('Elige después de qué cuota harás el abono.')
+    .bail()
+    .isInt({ min: 0 })
+    .withMessage('La cuota debe ser un número entero.'),
+  body('monto')
+    .notEmpty()
+    .withMessage('Ingresa el valor del abono.')
+    .bail()
+    .isDecimal(AMOUNT_FORMAT)
+    .withMessage('El abono debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El abono debe ser mayor a $0.'),
+  body('opcion')
+    .isIn(['REDUCIR_PLAZO', 'REDUCIR_CUOTA'])
+    .withMessage('Elige si el abono reduce el plazo o la cuota.'),
+  validateRequest,
 ];
 
 module.exports = {
+  MAX_START_DAYS,
+  validateCreditPrepayment,
   validateCreditSimulation,
+  validateCreditComparison,
   validateInvestmentSimulation,
 };

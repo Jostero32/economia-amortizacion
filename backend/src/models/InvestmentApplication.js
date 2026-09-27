@@ -101,6 +101,12 @@ const InvestmentApplication = sequelize.define('InvestmentApplication', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  declaraLicitudFondos: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Declaración del cliente sobre el origen lícito de los fondos',
+  },
   observacionAsesor: {
     type: DataTypes.TEXT,
     allowNull: true,

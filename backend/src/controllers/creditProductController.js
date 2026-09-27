@@ -1,5 +1,13 @@
 const { CreditType, CreditSegment, CreditRate, Charge } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { segmentRequiresLifeInsurance } = require('../services/amortization/charges');
+
+// Agrega al producto si el seguro de desgravamen es obligatorio por su segmento (vivienda)
+function withInsuranceRule(product) {
+  const data = product.toJSON();
+  data.requiereDesgravamen = segmentRequiresLifeInsurance(data.segment?.codigo);
+  return data;
+}
 
 async function getCreditProducts(req, res, next) {
   try {
@@ -30,7 +38,7 @@ async function getCreditProducts(req, res, next) {
     });
 
     return successResponse(res, {
-      products,
+      products: products.map(withInsuranceRule),
       generalCharges,
     });
   } catch (error) {
@@ -75,7 +83,7 @@ async function getCreditProductById(req, res, next) {
     });
 
     return successResponse(res, {
-      product,
+      product: withInsuranceRule(product),
       generalCharges,
     });
   } catch (error) {

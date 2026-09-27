@@ -1,6 +1,8 @@
 const { MulterError } = require('multer');
 const { errorResponse } = require('../utils/apiResponse');
 
+const GENERIC_ERROR_MESSAGE = 'Ocurrió un problema al procesar tu solicitud. Intenta nuevamente en unos minutos.';
+
 function errorHandler(err, req, res, next) {
   console.error('[Error Middleware]:', err);
 
@@ -8,18 +10,27 @@ function errorHandler(err, req, res, next) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return errorResponse(res, 'El archivo excede el tamaño máximo permitido de 5 MB.', 400);
     }
-    return errorResponse(res, `Error en la carga de archivos: ${err.message}`, 400);
+    return errorResponse(res, 'No se pudo cargar el archivo. Verifica que sea un solo archivo PDF o imagen.', 400);
   }
 
-  if (err.name === 'SequelizeValidationError' || err.name === 'SequelizeUniqueConstraintError') {
-    const messages = err.errors.map(e => e.message);
-    return errorResponse(res, `Error de validación: ${messages.join(', ')}`, 400);
+  // Los mensajes de Sequelize son técnicos y en inglés: se reemplazan por uno comprensible
+  if (err.name === 'SequelizeValidationError') {
+    return errorResponse(res, 'Algunos datos no son válidos. Revisa el formulario e intenta nuevamente.', 400);
+  }
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    return errorResponse(res, 'Ya existe un registro con esos datos.', 409);
+  }
+  if (err.type === 'entity.parse.failed') {
+    return errorResponse(res, 'La información enviada no tiene un formato válido.', 400);
   }
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Error interno del servidor';
+  // Errores esperados (httpError, validaciones de archivos): su mensaje está pensado para el usuario
+  if (err.statusCode && err.statusCode < 500) {
+    return errorResponse(res, err.message, err.statusCode);
+  }
 
-  return errorResponse(res, message, statusCode);
+  // Errores inesperados: nunca exponer detalles internos
+  return errorResponse(res, GENERIC_ERROR_MESSAGE, 500);
 }
 
 function notFoundHandler(req, res) {

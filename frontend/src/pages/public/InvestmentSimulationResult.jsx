@@ -1,62 +1,69 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { publicService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
+import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
+import InterestSchedule from '../../components/investment/InterestSchedule';
+import SavingsSchedule from '../../components/investment/SavingsSchedule';
+import { formatMoney, formatPercent, formatDate } from '../../utils/format';
+
+function DetailRow({ label, value, strong = false }) {
+  return (
+    <div className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[14px]">
+      <span className="text-gray-600">{label}</span>
+      <span className={`font-numeric-data ${strong ? 'font-bold text-primary' : 'text-primary'}`}>{value}</span>
+    </div>
+  );
+}
 
 export default function InvestmentSimulationResult() {
   const { id } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isClient } = useAuth();
 
-  const [simulation, setSimulation] = useState(location.state?.simulationData?.simulation || null);
-  const [loading, setLoading] = useState(!simulation);
+  const [simulation, setSimulation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState(null);
 
-  const formatUSD = (val) =>
-    new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(val || 0);
-
   useEffect(() => {
-    if (!simulation) {
-      publicService
-        .getInvestmentSimulation(id)
-        .then((res) => {
-          if (res.success && res.data?.simulation) {
-            setSimulation(res.data.simulation);
-          }
-        })
-        .catch((err) => {
-          setError(err.message || 'Error al cargar la simulación de inversión');
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [id, simulation]);
+    publicService
+      .getInvestmentSimulation(id)
+      .then((res) => setSimulation(res.data?.simulation || null))
+      .catch((err) => setError(err.message || 'No se pudo cargar la simulación de inversión.'))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   const handleApply = () => {
+    const target = `/cliente/solicitudes?invSimulationId=${id}`;
     if (!isAuthenticated) {
       navigate('/login', {
-        state: {
-          from: `/cliente/solicitudes?invSimulationId=${id}`,
-          message: 'Inicia sesión para formalizar la solicitud de depósito a plazo.',
-        },
+        state: { from: target, message: 'Inicia sesión para registrar tu solicitud de inversión.' },
       });
     } else {
-      navigate(`/cliente/solicitudes?invSimulationId=${id}`);
+      navigate(target);
     }
   };
 
-  const handleDownloadPdf = () => {
-    const pdfUrl = publicService.getInvestmentSimulationPdfUrl(id);
-    window.open(pdfUrl, '_blank');
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      await publicService.downloadInvestmentSimulationPdf(id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) {
-    return <LoadingState message="Cargando proyección de inversión..." />;
+    return <LoadingState message="Cargando simulación de inversión..." />;
   }
 
-  if (error || !simulation) {
+  if (!simulation) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
         <h2 className="text-xl font-bold text-primary">Simulación no disponible</h2>
@@ -68,89 +75,80 @@ export default function InvestmentSimulationResult() {
     );
   }
 
+  const retention = Number(simulation.retencionIR || 0);
+  const isSavingsPlan = simulation.aporteMensual != null;
+  const grossInterest = Number(simulation.interesGanado || 0);
+  const netInterest = Number(simulation.interesNeto ?? grossInterest - retention);
+
   return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-8 md:py-10 space-y-8">
-      {/* Cabecera y Acciones */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-gray-100">
+    <div className="max-w-[900px] mx-auto px-4 sm:px-8 py-8 md:py-10 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-1.5 text-[13px] text-gray-500 mb-2">
-            <Link to="/inversiones/simulador" className="hover:text-primary transition-colors">
-              Simulador
-            </Link>
+            <Link to="/inversiones/simulador" className="hover:text-primary">Simulador</Link>
             <span>/</span>
             <span className="text-primary font-medium">Resultado #{id.slice(0, 8)}</span>
           </div>
-          <h1 className="text-[26px] sm:text-[32px] font-bold text-primary tracking-tight">
-            Proyección del depósito a plazo (DPF)
+          <h1 className="text-[26px] sm:text-[30px] font-bold text-primary tracking-tight">
+            {simulation.product?.nombre || 'Depósito a plazo fijo'}
           </h1>
           <p className="text-[14px] text-on-surface-variant mt-1">
-            Plazo: {simulation.plazoDias} días • Fecha de vencimiento: {simulation.fechaVencimiento}
+            {simulation.plazoDias} días · del {formatDate(simulation.fechaInicio)} al {formatDate(simulation.fechaVencimiento)}
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={handleDownloadPdf}>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" iconName="download" onClick={handleDownloadPdf} loading={downloading} loadingText="Descargando...">
             Descargar PDF
           </Button>
-          <Button variant="fintech" onClick={handleApply}>
-            Solicitar esta inversión →
-          </Button>
+          {(!isAuthenticated || isClient) && (
+            <Button variant="fintech" iconName="send" onClick={handleApply}>
+              Solicitar esta inversión
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Tarjetas de Resumen Financiero */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] space-y-1">
-          <span className="text-[13px] text-gray-500 block">Capital invertido</span>
-          <span className="text-[26px] font-bold text-primary font-numeric-data block">
-            {formatUSD(simulation.monto)}
+      {error && <Alert type="error" title="No pudimos completar la operación">{error}</Alert>}
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-5">
+        <div>
+          <span className="text-[13px] text-gray-500 block">
+            {isSavingsPlan
+              ? 'Tendrás al final del plan'
+              : simulation.pagoIntereses === 'MENSUAL' ? 'Total que recibirás (capital e intereses netos)' : 'Recibirás al vencimiento'}
           </span>
-          <span className="text-[12px] text-gray-500 block">Dólares americanos</span>
+          <span className="text-[34px] font-bold text-primary font-numeric-hero leading-tight">{formatMoney(simulation.valorFinal)}</span>
         </div>
-
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] space-y-1">
-          <span className="text-[13px] text-gray-500 block">Tasa de rendimiento</span>
-          <span className="text-[26px] font-bold text-secondary font-numeric-data block">
-            {Number(simulation.tasaAnual).toFixed(2)}%
-          </span>
-          <span className="text-[12px] text-gray-500 block">TEA Anual fija</span>
+        <div>
+          {isSavingsPlan && <DetailRow label="Aporte mensual" value={formatMoney(simulation.aporteMensual)} />}
+          <DetailRow label={isSavingsPlan ? 'Total aportado' : 'Capital invertido'} value={formatMoney(simulation.monto)} />
+          <DetailRow label="Tasa de interés nominal anual" value={formatPercent(simulation.tasaAnual)} />
+          {simulation.tasaEfectiva != null && (
+            <DetailRow label="Tasa efectiva anual (TEA)" value={formatPercent(simulation.tasaEfectiva)} />
+          )}
+          <DetailRow label="Interés ganado" value={formatMoney(grossInterest)} />
+          <DetailRow
+            label="Retención Impuesto a la Renta"
+            value={retention > 0 ? `− ${formatMoney(retention)} (${formatPercent(simulation.tasaRetencion, 2, 0)})` : 'Exento'}
+          />
+          <DetailRow label="Ganancia neta" value={formatMoney(netInterest)} strong />
         </div>
-
-        <div className="bg-blue-50/60 p-6 rounded-xl border border-blue-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] space-y-1">
-          <span className="text-[13px] text-secondary font-medium block">Ganancia neta estimada</span>
-          <span className="text-[26px] font-bold text-primary font-numeric-data block">
-            +{formatUSD(simulation.rendimiento || simulation.interesGanado)}
-          </span>
-          <span className="text-[12px] text-gray-500 block">Al término de {simulation.plazoDias} días</span>
-        </div>
-      </div>
-
-      {/* Detalle de Liquidación */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-4">
-        <h3 className="text-[17px] font-bold text-primary pb-3 border-b border-gray-100">
-          Detalle de liquidación al vencimiento
-        </h3>
-
-        <div className="space-y-3 text-[14px]">
-          <div className="flex justify-between py-2 border-b border-gray-100">
-            <span className="text-gray-600">Fecha de constitución:</span>
-            <span className="font-semibold text-primary">{simulation.fechaInicio}</span>
+        {isSavingsPlan && simulation.cronogramaPagos?.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-[15px] font-bold text-primary">Aportes mes a mes</h2>
+            <SavingsSchedule pagos={simulation.cronogramaPagos} />
           </div>
-          <div className="flex justify-between py-2 border-b border-gray-100">
-            <span className="text-gray-600">Fecha de vencimiento:</span>
-            <span className="font-semibold text-primary">{simulation.fechaVencimiento}</span>
+        )}
+        {!isSavingsPlan && simulation.pagoIntereses === 'MENSUAL' && simulation.cronogramaPagos?.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-[15px] font-bold text-primary">Pagos de intereses cada 30 días</h2>
+            <InterestSchedule pagos={simulation.cronogramaPagos} />
           </div>
-          <div className="flex justify-between py-2 border-b border-gray-100">
-            <span className="text-gray-600">Plazo en días:</span>
-            <span className="font-semibold text-primary">{simulation.plazoDias} días</span>
-          </div>
-          <div className="flex justify-between pt-3 text-[16px] font-bold text-primary">
-            <span>Total a recibir al vencimiento:</span>
-            <span className="text-[20px] text-secondary font-numeric-data">
-              {formatUSD(simulation.valorFinal)}
-            </span>
-          </div>
-        </div>
+        )}
+        <p className="text-[12px] text-gray-500">
+          Interés simple con base comercial de 360 días. Valores referenciales; las condiciones finales se
+          confirman al abrir el depósito.
+        </p>
       </div>
     </div>
   );

@@ -3,7 +3,11 @@
  * Valida la conversión matemática TEA -> Mensual y el cumplimiento de techos regulatorios BCE.
  */
 
-const { annualEffectiveToMonthlyRate } = require('../../src/services/amortization');
+const {
+  annualEffectiveToMonthlyRate,
+  effectiveToNominalRate,
+  nominalToEffectiveRate,
+} = require('../../src/services/amortization');
 const BCE_RATES_SEPT_2026 = require('../fixtures/bceRates.sept2026');
 const { expectCloseToRate } = require('../helpers/assertions');
 
@@ -47,16 +51,42 @@ describe('Conversión de Tasas de Interés y Regulación Ecuatoriana (BCE)', () 
       expectCloseToRate(iMensual, esperado, 0.000001);
     });
 
-    test('acepta tasa tanto en formato porcentaje (15.74) como en formato decimal (0.1574)', () => {
-      const tasaDesdePorcentaje = annualEffectiveToMonthlyRate(15.74);
-      const tasaDesdeDecimal = annualEffectiveToMonthlyRate(0.1574);
-      expectCloseToRate(tasaDesdePorcentaje, tasaDesdeDecimal, 0.00000001);
+    test('interpreta la tasa siempre como porcentaje: 0.9 es 0.9 % anual y no 90 %', () => {
+      const iMensual = annualEffectiveToMonthlyRate(0.9);
+      const esperado = Math.pow(1 + 0.009, 1 / 12) - 1; // 0.000747...
+      expectCloseToRate(iMensual, esperado, 0.000001);
+      expect(iMensual).toBeLessThan(0.001);
     });
 
     test('lanza error si la tasa ingresada es negativa', () => {
       expect(() => {
         annualEffectiveToMonthlyRate(-5);
       }).toThrow('La tasa no puede ser negativa.');
+    });
+  });
+
+  // =========================================================================
+  // TASA NOMINAL <-> TASA EFECTIVA (Instructivo de Tasas del BCE, Anexo 1)
+  // TEA = [1 + i·n/360]^(360/n) - 1
+  // =========================================================================
+  describe('Equivalencia entre tasa nominal y TEA (BCE, Anexo 1)', () => {
+    test('la TEA máxima de consumo (16.77 %) equivale a una nominal de 15.6042 % con pagos mensuales', () => {
+      expectCloseToRate(effectiveToNominalRate(16.77, 30), 15.604235, 0.0001);
+    });
+
+    test('una nominal de 15.60 % con pagos mensuales produce una TEA de 16.7652 %', () => {
+      expectCloseToRate(nominalToEffectiveRate(15.60, 30), 16.765213, 0.0001);
+    });
+
+    test('la conversión es reversible para cualquier frecuencia de pago', () => {
+      [30, 90, 180, 360].forEach((dias) => {
+        const nominal = effectiveToNominalRate(12.5, dias);
+        expectCloseToRate(nominalToEffectiveRate(nominal, dias), 12.5, 0.000001);
+      });
+    });
+
+    test('con pago anual (n = 360) la nominal y la efectiva coinciden', () => {
+      expectCloseToRate(effectiveToNominalRate(9.26, 360), 9.26, 0.000001);
     });
   });
 

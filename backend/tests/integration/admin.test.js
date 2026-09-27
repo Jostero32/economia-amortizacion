@@ -134,7 +134,7 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.errors.length).toBeGreaterThan(0);
+      expect(Object.keys(res.body.errors).length).toBeGreaterThan(0);
     });
 
     test('ADMIN puede subir un logotipo institucional y se publica desde uploads', async () => {
@@ -273,21 +273,71 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
   // SECCIÓN 22: CRUD DE CARGOS Y PRODUCTOS DE INVERSIÓN
   // =========================================================================
   describe('Gestión Administrativa de Cobros y Productos de Inversión', () => {
-    test('ADMIN puede crear un cargo administrativo', async () => {
+    test('ADMIN puede crear un gasto a terceros que se descuenta al desembolso', async () => {
       const res = await request(app)
         .post('/api/admin/charges')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          nombre: 'Comisión Test Auditoría',
+          nombre: 'Avalúo Test Auditoría',
+          categoria: 'GASTO_TERCEROS',
           tipo: 'VALOR_FIJO',
           valor: 15.00,
           aplicacion: 'UNA_VEZ',
-          esObligatorio: false,
+          obligatorio: false,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.data.charge.id).toBeDefined();
+      expect(res.body.data.charge.categoria).toBe('GASTO_TERCEROS');
+    });
+
+    test('rechaza cobros sin categoría válida o con porcentaje fuera de rango, con error por campo', async () => {
+      const res = await request(app)
+        .post('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          nombre: 'Comisión de apertura',
+          categoria: 'COMISION',
+          tipo: 'PORCENTAJE',
+          porcentaje: 150,
+          aplicacion: 'UNA_VEZ',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.categoria).toBeDefined();
+      expect(res.body.errors.porcentaje).toBeDefined();
+      expect(typeof res.body.message).toBe('string');
+    });
+
+    test('ADMIN lista todos los cobros y puede desactivarlos y reactivarlos', async () => {
+      const list = await request(app)
+        .get('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(list.status).toBe(200);
+      const solca = list.body.data.charges.find((c) => c.nombre === 'Contribución SOLCA');
+      expect(solca.categoria).toBe('IMPUESTO');
+      expect(solca.anualizarSiPlazoMenorAnio).toBe(true);
+
+      const avaluo = list.body.data.charges.find((c) => c.nombre === 'Avalúo Test Auditoría');
+      const off = await request(app)
+        .delete(`/api/admin/charges/${avaluo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(off.status).toBe(200);
+
+      const on = await request(app)
+        .put(`/api/admin/charges/${avaluo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ activo: true });
+      expect(on.status).toBe(200);
+      expect(on.body.data.charge.activo).toBe(true);
+    });
+
+    test('ASESOR no puede ver ni modificar la configuración de cobros', async () => {
+      const res = await request(app)
+        .get('/api/admin/charges')
+        .set('Authorization', `Bearer ${advisorToken}`);
+      expect(res.status).toBe(403);
     });
 
     test('ADMIN puede registrar un nuevo producto de inversión DPF', async () => {
@@ -313,6 +363,51 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
   // =========================================================================
   // SECCIÓN 28: SEGURIDAD Y PRIVACIDAD EN RESPUESTAS DE ERROR
   // =========================================================================
+  describe('Catálogo y tramos de tasas de inversión', () => {
+    test('el seed incluye los productos de vivienda con desgravamen obligatorio y el crédito emergente', async () => {
+      const res = await request(app).get('/api/credit-products');
+      const byName = Object.fromEntries(res.body.data.products.map((p) => [p.nombre, p]));
+      expect(byName['Vivienda de Interés Social (VIS)'].requiereDesgravamen).toBe(true);
+      expect(byName['Vivienda de Interés Público (VIP)'].requiereDesgravamen).toBe(true);
+      expect(byName['Crédito Emergente'].plazoMaximo).toBeLessThan(12);
+      expect(res.body.data.products.length).toBeGreaterThanOrEqual(12);
+    });
+
+    test('ADMIN gestiona tramos: rechaza cruces, versiona cambios de tasa y desactiva', async () => {
+      const list = await request(app).get('/api/admin/investments').set('Authorization', `Bearer ${adminToken}`);
+      expect(list.status).toBe(200);
+      const product = list.body.data.products.find((p) => p.nombre === 'Depósito a Plazo Fijo');
+      const tramo = product.rates.find((r) => r.plazoMinDias === 61 && r.activo);
+
+      const overlap = await request(app)
+        .post(`/api/admin/investments/${product.id}/rates`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ plazoMinDias: 50, plazoMaxDias: 70, tasa: 4.5 });
+      expect(overlap.status).toBe(400);
+      expect(overlap.body.message).toMatch(/se cruza/);
+
+      const update = await request(app)
+        .put(`/api/admin/investments/${product.id}/rates/${tramo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ tasa: 4.55 });
+      expect(update.status).toBe(200);
+      expect(update.body.data.rate.id).not.toBe(tramo.id);
+      expect(Number(update.body.data.rate.tasa)).toBe(4.55);
+
+      const after = await request(app).get('/api/admin/investments').set('Authorization', `Bearer ${adminToken}`);
+      const history = after.body.data.products
+        .find((p) => p.id === product.id)
+        .rates.filter((r) => r.plazoMinDias === 61);
+      expect(history.filter((r) => r.activo)).toHaveLength(1);
+      expect(history.filter((r) => !r.activo)).toHaveLength(1);
+
+      const remove = await request(app)
+        .delete(`/api/admin/investments/${product.id}/rates/${update.body.data.rate.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(remove.status).toBe(200);
+    });
+  });
+
   describe('Control de Fuga de Información Sensible', () => {
     test('las respuestas de error no exponen JWT_SECRET, contraseñas ni credenciales de DB', async () => {
       const res = await request(app)

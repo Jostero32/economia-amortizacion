@@ -136,7 +136,7 @@ export default function Home() {
               <div className="p-4 rounded-xl bg-gray-50/70 border border-gray-100 space-y-2">
                 <div className="flex justify-between items-baseline">
                   <span className="text-[13px] text-gray-600">Cuota mensual estimada:</span>
-                  <div className="text-[28px] font-bold text-primary font-numeric-hero">
+                  <div className="text-[28px] font-bold text-primary font-numeric-hero leading-tight">
                     {formatUSD(quickQuota)}
                     <span className="text-[13px] font-normal text-gray-500">/mes</span>
                   </div>

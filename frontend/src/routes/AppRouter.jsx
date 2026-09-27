@@ -18,6 +18,7 @@ import CreditSimulationResult from '../pages/public/CreditSimulationResult';
 import InvestmentCatalog from '../pages/public/InvestmentCatalog';
 import InvestmentSimulator from '../pages/public/InvestmentSimulator';
 import InvestmentSimulationResult from '../pages/public/InvestmentSimulationResult';
+import SavingsSimulator from '../pages/public/SavingsSimulator';
 import Login from '../pages/public/Login';
 import Register from '../pages/public/Register';
 import NotFound from '../pages/public/NotFound';
@@ -57,6 +58,7 @@ export default function AppRouter() {
         <Route path="/inversiones" element={<InvestmentCatalog />} />
         <Route path="/inversiones/simulador" element={<InvestmentSimulator />} />
         <Route path="/inversiones/simulador/:id" element={<InvestmentSimulationResult />} />
+        <Route path="/inversiones/ahorro" element={<SavingsSimulator />} />
 
         {/* Login y Register protegidos para que usuarios autenticados no entren */}
         <Route

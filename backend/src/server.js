@@ -3,6 +3,8 @@ const config = require('./config/env');
 const { sequelize } = require('./models');
 const { runAdditiveMigrations } = require('./config/schemaMigrations');
 const { seedDatabase } = require('./seed/seed');
+const { Document } = require('./models');
+const { moveLegacyDocuments } = require('./services/storage/documentStorage');
 
 async function startServer() {
   try {
@@ -23,7 +25,13 @@ async function startServer() {
     // 3. Carga de semilla de datos inicial
     await seedDatabase();
 
-    // 4. Iniciar servidor Express
+    // 4. Retirar de la carpeta pública los documentos subidos con versiones anteriores
+    const movedDocuments = await moveLegacyDocuments(Document);
+    if (movedDocuments > 0) {
+      console.log(`[Archivos]: ${movedDocuments} documento(s) movido(s) a la carpeta privada.`);
+    }
+
+    // 5. Iniciar servidor Express
     app.listen(config.PORT, () => {
       console.log(`====================================================`);
       console.log(` FinanEcuador Demo Backend en línea`);

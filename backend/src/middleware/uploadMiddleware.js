@@ -1,23 +1,24 @@
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const { UPLOADS_DIR, DOCUMENTS_DIR } = require('../services/storage/documentStorage');
 
-const uploadDir = path.resolve(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+function buildFileName(req, file, cb) {
+  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+  const ext = path.extname(file.originalname).toLowerCase();
+  const cleanBaseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+  cb(null, `${cleanBaseName}-${uniqueSuffix}${ext}`);
 }
 
-// Configuración de almacenamiento local
+// Documentos de solicitudes: carpeta privada, no publicada como estático
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname).toLowerCase();
-    const cleanBaseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
-    cb(null, `${cleanBaseName}-${uniqueSuffix}${ext}`);
-  },
+  destination: (req, file, cb) => cb(null, DOCUMENTS_DIR),
+  filename: buildFileName,
+});
+
+// Logotipo institucional: carpeta pública /uploads
+const publicStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: buildFileName,
 });
 
 // Filtro de extensiones y tipos MIME permitidos
@@ -59,7 +60,7 @@ const upload = multer({
 });
 
 const imageUpload = multer({
-  storage,
+  storage: publicStorage,
   fileFilter: imageFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,

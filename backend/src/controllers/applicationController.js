@@ -1,21 +1,33 @@
+const { Op } = require('sequelize');
 const {
   CreditApplication,
   InvestmentApplication,
   CreditSimulation,
   InvestmentSimulation,
+  AmortizationRow,
   CreditType,
   InvestmentProduct,
+  InvestmentRate,
   Document,
   User,
+  Institution,
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
+const { roundToTwo, formatMoney } = require('../utils/money');
+const { todayISO, daysBetween, addMonthsClamped, ageOn, toISODate } = require('../utils/dates');
+const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
+const { quoteCredit, saveCreditSimulation } = require('../services/credit/creditQuote');
+const { getFrequency } = require('../services/amortization/frequencies');
+const {
+  generateCreditSimulationPDF,
+  generateInvestmentSimulationPDF,
+} = require('../services/pdf/pdfService');
 
-function generateApplicationCode(prefix) {
-  const year = new Date().getFullYear();
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  return `${prefix}-${year}-${randomSuffix}`;
-}
+// Edad máxima al terminar de pagar el crédito (referencia: BIESS 77 años, bancos privados hasta 82)
+const MAX_AGE_AT_MATURITY = 80;
+// Las tasas cambian cada mes: una simulación sirve para solicitar durante 30 días
+const SIMULATION_VALIDITY_DAYS = 30;
 
 const REQUIRED_DOCUMENT_TYPES = [
   'CEDULA',
@@ -25,11 +37,66 @@ const REQUIRED_DOCUMENT_TYPES = [
 ];
 
 const DOCUMENT_TYPE_LABELS = {
+  POLIZA_DESGRAVAMEN: 'póliza de desgravamen endosada',
   CEDULA: 'cédula de identidad',
   COMPROBANTE_DOMICILIO: 'comprobante de domicilio',
   COMPROBANTE_INGRESOS: 'comprobante de ingresos',
   SELFIE: 'selfie para validación biométrica',
 };
+
+// Flujo de una solicitud: el análisis (EN_REVISION) es previo a la aprobación
+const STATUS_TRANSITIONS = {
+  PENDIENTE: ['EN_REVISION', 'PENDIENTE_DOCUMENTOS', 'RECHAZADA'],
+  EN_REVISION: ['PENDIENTE_DOCUMENTOS', 'APROBADA', 'RECHAZADA'],
+  PENDIENTE_DOCUMENTOS: ['EN_REVISION', 'RECHAZADA'],
+  APROBADA: [],
+  RECHAZADA: [],
+};
+
+const STATUS_LABELS = {
+  PENDIENTE: 'pendiente',
+  EN_REVISION: 'en revisión',
+  PENDIENTE_DOCUMENTOS: 'con documentos pendientes',
+  APROBADA: 'aprobada',
+  RECHAZADA: 'rechazada',
+};
+
+// El cliente debe saber qué corregir cuando se le piden documentos o se rechaza su solicitud
+const STATUSES_REQUIRING_NOTE = ['PENDIENTE_DOCUMENTOS', 'RECHAZADA'];
+
+const CLOSED_STATUSES = ['APROBADA', 'RECHAZADA'];
+
+/**
+ * Código correlativo anual: SOL-CRE-2026-000001
+ */
+async function nextApplicationCode(Model, prefix) {
+  const base = `${prefix}-${todayISO().slice(0, 4)}-`;
+  const last = await Model.findOne({
+    where: { codigo: { [Op.like]: `${base}______` } },
+    order: [['codigo', 'DESC']],
+    attributes: ['codigo'],
+  });
+  const next = last ? Number(last.codigo.slice(base.length)) + 1 : 1;
+  return `${base}${String(next).padStart(6, '0')}`;
+}
+
+/**
+ * Crea la solicitud con su código; reintenta si dos solicitudes toman el mismo número a la vez
+ */
+async function createWithCode(Model, prefix, data) {
+  for (let attempt = 1; ; attempt++) {
+    const codigo = await nextApplicationCode(Model, prefix);
+    try {
+      return await Model.create({ ...data, codigo });
+    } catch (error) {
+      if (error.name !== 'SequelizeUniqueConstraintError' || attempt >= 3) throw error;
+    }
+  }
+}
+
+function simulationAgeInDays(simulation) {
+  return daysBetween(toISODate(new Date(simulation.createdAt)), todayISO());
+}
 
 /**
  * Crear solicitud de crédito (CLIENTE)
@@ -43,6 +110,9 @@ async function createCreditApplication(req, res, next) {
       monto,
       plazoMeses,
       sistemaAmortizacion,
+      cargosOpcionales,
+      frecuenciaPago,
+      polizaDesgravamenPropia,
       nombres,
       apellidos,
       cedula,
@@ -57,52 +127,132 @@ async function createCreditApplication(req, res, next) {
       egresosMensuales,
     } = req.body;
 
-    let simulation = null;
-    let tasaAplicada = 0;
-    let cuotaEstimada = 0;
+    let simulation;
+    let rows;
 
     if (simulationId) {
-      simulation = await CreditSimulation.findByPk(simulationId);
-      if (simulation) {
-        tasaAplicada = simulation.tasaAnual;
-        cuotaEstimada = simulation.cuotaInicial;
+      simulation = await CreditSimulation.findByPk(simulationId, {
+        include: [{ model: AmortizationRow, as: 'rows' }],
+        order: [[{ model: AmortizationRow, as: 'rows' }, 'numeroCuota', 'ASC']],
+      });
+      if (!simulation) {
+        return errorResponse(res, 'La simulación indicada no existe.', 404);
       }
-    }
+      if (simulation.userId && simulation.userId !== userId) {
+        return errorResponse(res, 'La simulación indicada pertenece a otro usuario.', 403);
+      }
+      if (
+        Number(simulation.creditTypeId) !== Number(creditTypeId) ||
+        Number(simulation.monto) !== Number(monto) ||
+        Number(simulation.plazoMeses) !== Number(plazoMeses) ||
+        simulation.sistemaAmortizacion !== sistemaAmortizacion ||
+        (simulation.frecuenciaPago || 'MENSUAL') !== (frecuenciaPago || simulation.frecuenciaPago || 'MENSUAL')
+      ) {
+        return errorResponse(res, 'Los datos no coinciden con la simulación. Vuelve a simular el crédito.', 400);
+      }
 
-    if (!simulation) {
+      const existing = await CreditApplication.findOne({ where: { simulationId } });
+      if (existing) {
+        return errorResponse(res, `Ya registraste la solicitud ${existing.codigo} con esta simulación.`, 409);
+      }
+
+      if (simulationAgeInDays(simulation) > SIMULATION_VALIDITY_DAYS) {
+        return errorResponse(
+          res,
+          `La simulación tiene más de ${SIMULATION_VALIDITY_DAYS} días. Vuelve a simular con las tasas vigentes.`,
+          400
+        );
+      }
+
       const product = await CreditType.findByPk(creditTypeId);
       if (!product || !product.activo) {
-        return errorResponse(res, 'Producto de crédito no válido.', 404);
+        return errorResponse(res, 'El producto de crédito ya no está disponible.', 400);
       }
-      tasaAplicada = product.tasaInstitucion;
-      cuotaEstimada = Number(monto) / Number(plazoMeses);
+      if (Number(product.tasaInstitucion) !== Number(simulation.tasaAnual)) {
+        return errorResponse(
+          res,
+          'La tasa del producto cambió desde tu simulación. Vuelve a simular para ver las condiciones vigentes.',
+          400
+        );
+      }
+
+      // Una simulación hecha sin sesión pasa a ser del cliente que solicita
+      if (!simulation.userId) {
+        await simulation.update({ userId });
+      }
+      rows = simulation.rows;
+    } else {
+      // Sin simulación previa se cotiza con las condiciones vigentes y se guarda la tabla
+      const quote = await quoteCredit({
+        creditTypeId,
+        amount: monto,
+        termMonths: plazoMeses,
+        amortizationSystem: sistemaAmortizacion,
+        cargosOpcionales,
+        frecuenciaPago,
+        polizaDesgravamenPropia,
+      });
+      simulation = await saveCreditSimulation(quote.result, {
+        creditTypeId,
+        userId,
+        polizaDesgravamenPropia: quote.polizaDesgravamenPropia,
+      });
+      rows = quote.result.rows;
     }
 
-    const applicationCode = generateApplicationCode('SOL-CRE');
+    // Capacidad de pago: la cuota más alta (con seguros) debe caber en los ingresos disponibles
+    // Con pagos trimestrales o semestrales se compara la cuota mensual equivalente
+    const frecuencia = getFrequency(simulation.frecuenciaPago || 'MENSUAL');
+    const cuotaMaxima = roundToTwo(
+      rows.reduce((max, row) => Math.max(max, Number(row.totalPago)), 0) / frecuencia.meses
+    );
+    const disponible = roundToTwo(Number(ingresosMensuales) - Number(egresosMensuales));
+    if (cuotaMaxima > disponible) {
+      return errorResponse(
+        res,
+        `La cuota${frecuencia.meses > 1 ? ' mensual equivalente' : ''} de ${formatMoney(cuotaMaxima)} supera tus ingresos disponibles de ${formatMoney(Math.max(disponible, 0))}. Prueba con un monto menor o un plazo mayor.`,
+        400,
+        { ingresosMensuales: 'Tus ingresos disponibles no cubren la cuota.' }
+      );
+    }
 
-    const application = await CreditApplication.create({
-      codigo: applicationCode,
+    const fechaFinCredito = addMonthsClamped(todayISO(), Number(plazoMeses));
+    if (ageOn(fechaNacimiento, fechaFinCredito) > MAX_AGE_AT_MATURITY) {
+      return errorResponse(
+        res,
+        `Al terminar de pagar tendrías más de ${MAX_AGE_AT_MATURITY} años. Elige un plazo más corto.`,
+        400,
+        { plazoMeses: 'El plazo supera la edad máxima permitida al finalizar el crédito.' }
+      );
+    }
+
+    const application = await createWithCode(CreditApplication, 'SOL-CRE', {
       userId,
-      simulationId: simulationId || null,
+      simulationId: simulation.id,
       creditTypeId,
       monto: Number(monto),
       plazoMeses: parseInt(plazoMeses, 10),
-      sistemaAmortizacion: (sistemaAmortizacion || 'FRANCES').toUpperCase(),
-      tasaAplicada,
-      cuotaEstimada,
+      sistemaAmortizacion,
+      frecuenciaPago: frecuencia.codigo,
+      polizaDesgravamenPropia: Boolean(simulation.polizaDesgravamenPropia),
+      tasaAplicada: simulation.tasaAnual,
+      cuotaEstimada: rows[0] ? rows[0].totalPago : simulation.cuotaInicial,
       estado: 'PENDIENTE',
       nombres,
       apellidos,
       cedula,
-      fechaNacimiento: fechaNacimiento || null,
+      fechaNacimiento,
       estadoCivil: estadoCivil || null,
       direccion,
       ciudad,
       telefono,
       email,
-      actividadEconomica: actividadEconomica || null,
+      actividadEconomica,
       ingresosMensuales: Number(ingresosMensuales),
       egresosMensuales: Number(egresosMensuales),
+      relacionCuotaIngreso: roundToTwo((cuotaMaxima / Number(ingresosMensuales)) * 100),
+      autorizaConsultaBuro: true,
+      fechaAutorizacionBuro: new Date(),
       biometriaValidada: false,
     });
 
@@ -142,7 +292,7 @@ async function getMyCreditApplications(req, res, next) {
 }
 
 /**
- * Obtener detalle de solicitud de crédito
+ * Obtener detalle de solicitud de crédito con su tabla de amortización
  */
 async function getCreditApplicationById(req, res, next) {
   try {
@@ -151,10 +301,15 @@ async function getCreditApplicationById(req, res, next) {
       include: [
         { model: CreditType, as: 'creditType' },
         { model: Document, as: 'documents' },
-        { model: CreditSimulation, as: 'simulation' },
+        {
+          model: CreditSimulation,
+          as: 'simulation',
+          include: [{ model: AmortizationRow, as: 'rows' }],
+        },
         { model: User, as: 'user', attributes: ['id', 'nombre', 'email', 'rol'] },
         { model: User, as: 'asesor', attributes: ['id', 'nombre', 'email'] },
       ],
+      order: [[{ model: CreditSimulation, as: 'simulation' }, { model: AmortizationRow, as: 'rows' }, 'numeroCuota', 'ASC']],
     });
 
     if (!application) {
@@ -194,61 +349,107 @@ async function createInvestmentApplication(req, res, next) {
       finalidadInversion,
     } = req.body;
 
-    let simulation = null;
-    let tasaAplicada = 0;
-    let interesEstimado = 0;
-    let valorFinalEstimado = 0;
+    const product = await InvestmentProduct.findByPk(investmentProductId, {
+      include: [{ model: InvestmentRate, as: 'rates', where: { activo: true }, required: false }],
+    });
+    if (!product || !product.activo) {
+      return errorResponse(res, 'El producto de inversión no está disponible.', 404);
+    }
+
+    let simulation;
 
     if (simulationId) {
       simulation = await InvestmentSimulation.findByPk(simulationId);
       if (!simulation) {
         return errorResponse(res, 'La simulación de inversión indicada no existe.', 404);
       }
-
+      if (simulation.userId && simulation.userId !== userId) {
+        return errorResponse(res, 'La simulación indicada pertenece a otro usuario.', 403);
+      }
       if (Number(simulation.investmentProductId) !== Number(investmentProductId)) {
         return errorResponse(res, 'El producto no corresponde a la simulación de inversión.', 400);
       }
-
       if (Number(simulation.monto) !== Number(monto) || Number(simulation.plazoDias) !== Number(plazoDias)) {
         return errorResponse(res, 'El monto o plazo no corresponde a la simulación de inversión.', 400);
       }
 
-      tasaAplicada = simulation.tasaAnual;
-      interesEstimado = simulation.interesGanado;
-      valorFinalEstimado = simulation.valorFinal;
-    }
-
-    if (!simulation) {
-      const product = await InvestmentProduct.findByPk(investmentProductId);
-      if (!product || !product.activo) {
-        return errorResponse(res, 'Producto de inversión no válido.', 404);
+      const existing = await InvestmentApplication.findOne({ where: { simulationId } });
+      if (existing) {
+        return errorResponse(res, `Ya registraste la solicitud ${existing.codigo} con esta simulación.`, 409);
       }
 
+      if (simulationAgeInDays(simulation) > SIMULATION_VALIDITY_DAYS) {
+        return errorResponse(
+          res,
+          `La simulación tiene más de ${SIMULATION_VALIDITY_DAYS} días. Vuelve a simular con las tasas vigentes.`,
+          400
+        );
+      }
+      if (resolveInvestmentRate(product, Number(plazoDias)) !== Number(simulation.tasaAnual)) {
+        return errorResponse(
+          res,
+          'La tasa del producto cambió desde tu simulación. Vuelve a simular para ver las condiciones vigentes.',
+          400
+        );
+      }
+
+      if (!simulation.userId) {
+        await simulation.update({ userId });
+      }
+    } else {
+      if (product.tipo === 'AHORRO_PROGRAMADO') {
+        return errorResponse(res, 'Simula tu plan de ahorro programado antes de solicitarlo.', 400);
+      }
       if (Number(monto) < Number(product.montoMinimo) || Number(monto) > Number(product.montoMaximo)) {
-        return errorResponse(res, 'El monto está fuera de los límites del producto de inversión.', 400);
+        return errorResponse(
+          res,
+          `El monto debe estar entre ${formatMoney(product.montoMinimo)} y ${formatMoney(product.montoMaximo)}.`,
+          400
+        );
       }
-
       if (Number(plazoDias) < product.plazoMinimoDias || Number(plazoDias) > product.plazoMaximoDias) {
-        return errorResponse(res, 'El plazo está fuera de los límites del producto de inversión.', 400);
+        return errorResponse(
+          res,
+          `El plazo debe estar entre ${product.plazoMinimoDias} y ${product.plazoMaximoDias} días.`,
+          400
+        );
       }
 
-      tasaAplicada = product.tasa || 5.0;
-      interesEstimado = (Number(monto) * (tasaAplicada / 100) * Number(plazoDias)) / 360;
-      valorFinalEstimado = Number(monto) + interesEstimado;
+      // Sin simulación previa se calcula con la tasa del tramo vigente y se guarda el resultado
+      const result = calculateInvestment({
+        amount: Number(monto),
+        termDays: Number(plazoDias),
+        annualRate: resolveInvestmentRate(product, Number(plazoDias)),
+        interestPayment: product.pagoIntereses,
+      });
+      simulation = await InvestmentSimulation.create({
+        investmentProductId: product.id,
+        userId,
+        monto: result.capital,
+        plazoDias: result.plazoDias,
+        tasaAnual: result.tasaAnual,
+        tasaEfectiva: result.tasaEfectiva,
+        pagoIntereses: result.pagoIntereses,
+        cronogramaPagos: result.cronogramaPagos,
+        interesGanado: result.interesGanado,
+        tasaRetencion: result.tasaRetencion,
+        retencionIR: result.retencionIR,
+        interesNeto: result.interesNeto,
+        valorFinal: result.valorFinal,
+        fechaInicio: result.fechaInicio,
+        fechaVencimiento: result.fechaVencimiento,
+      });
     }
 
-    const applicationCode = generateApplicationCode('SOL-INV');
-
-    const application = await InvestmentApplication.create({
-      codigo: applicationCode,
+    const application = await createWithCode(InvestmentApplication, 'SOL-INV', {
       userId,
-      simulationId: simulationId || null,
+      simulationId: simulation.id,
       investmentProductId,
       monto: Number(monto),
       plazoDias: parseInt(plazoDias, 10),
-      tasaAplicada,
-      interesEstimado,
-      valorFinalEstimado,
+      tasaAplicada: simulation.tasaAnual,
+      interesEstimado: simulation.interesGanado,
+      valorFinalEstimado: simulation.valorFinal,
       estado: 'PENDIENTE',
       nombres,
       apellidos,
@@ -259,6 +460,7 @@ async function createInvestmentApplication(req, res, next) {
       ingresosMensuales: Number(ingresosMensuales),
       origenFondos,
       finalidadInversion,
+      declaraLicitudFondos: true,
       biometriaValidada: false,
     });
 
@@ -360,27 +562,53 @@ async function updateApplicationStatus(req, res, next) {
     const { id } = req.params;
     const { estado, observacionAsesor, biometriaValidada, tipo = 'CREDITO' } = req.body;
 
-    const validStates = ['PENDIENTE', 'EN_REVISION', 'PENDIENTE_DOCUMENTOS', 'APROBADA', 'RECHAZADA'];
-    if (estado && !validStates.includes(estado)) {
-      return errorResponse(res, `Estado inválido. Debe ser uno de: ${validStates.join(', ')}`, 400);
+    if (!['CREDITO', 'INVERSION'].includes(tipo)) {
+      return errorResponse(res, 'El tipo de solicitud debe ser CREDITO o INVERSION.', 400);
+    }
+    if (estado && !Object.keys(STATUS_TRANSITIONS).includes(estado)) {
+      return errorResponse(res, `Estado inválido. Debe ser uno de: ${Object.keys(STATUS_TRANSITIONS).join(', ')}`, 400);
     }
 
-    let application;
-    let modelName = 'CreditApplication';
-
-    if (tipo === 'INVERSION') {
-      application = await InvestmentApplication.findByPk(id);
-      modelName = 'InvestmentApplication';
-    } else {
-      application = await CreditApplication.findByPk(id);
-    }
+    const isInvestment = tipo === 'INVERSION';
+    const modelName = isInvestment ? 'InvestmentApplication' : 'CreditApplication';
+    const application = isInvestment
+      ? await InvestmentApplication.findByPk(id)
+      : await CreditApplication.findByPk(id);
 
     if (!application) {
       return errorResponse(res, 'Solicitud no encontrada.', 404);
     }
 
+    const prevStatus = application.estado;
+
+    if (CLOSED_STATUSES.includes(prevStatus)) {
+      return errorResponse(
+        res,
+        `La solicitud ya fue ${STATUS_LABELS[prevStatus]} y no se puede modificar.`,
+        400
+      );
+    }
+
+    if (estado && estado !== prevStatus && !STATUS_TRANSITIONS[prevStatus].includes(estado)) {
+      return errorResponse(
+        res,
+        `Una solicitud ${STATUS_LABELS[prevStatus]} no puede pasar a ${STATUS_LABELS[estado]}.`,
+        400
+      );
+    }
+
+    const nota = observacionAsesor !== undefined ? String(observacionAsesor).trim() : '';
+    if (estado && estado !== prevStatus && STATUSES_REQUIRING_NOTE.includes(estado) && !nota) {
+      return errorResponse(
+        res,
+        'Escribe una observación para el cliente explicando el motivo.',
+        400,
+        { observacionAsesor: 'La observación es obligatoria para este estado.' }
+      );
+    }
+
     if (estado === 'APROBADA') {
-      const applicationDocumentFilter = tipo === 'INVERSION'
+      const applicationDocumentFilter = isInvestment
         ? { investmentApplicationId: application.id }
         : { creditApplicationId: application.id };
 
@@ -393,7 +621,11 @@ async function updateApplicationStatus(req, res, next) {
       });
 
       const validatedTypes = new Set(validatedDocuments.map(document => document.tipo));
-      const missingDocumentTypes = REQUIRED_DOCUMENT_TYPES.filter(type => !validatedTypes.has(type));
+      // Con póliza de desgravamen propia se exige además la póliza endosada
+      const requiredTypes = !isInvestment && application.polizaDesgravamenPropia
+        ? [...REQUIRED_DOCUMENT_TYPES, 'POLIZA_DESGRAVAMEN']
+        : REQUIRED_DOCUMENT_TYPES;
+      const missingDocumentTypes = requiredTypes.filter(type => !validatedTypes.has(type));
 
       if (missingDocumentTypes.length > 0) {
         const missingLabels = missingDocumentTypes.map(type => DOCUMENT_TYPE_LABELS[type]);
@@ -417,10 +649,8 @@ async function updateApplicationStatus(req, res, next) {
       }
     }
 
-    const prevStatus = application.estado;
-
     if (estado) application.estado = estado;
-    if (observacionAsesor !== undefined) application.observacionAsesor = observacionAsesor;
+    if (observacionAsesor !== undefined) application.observacionAsesor = nota || null;
     if (biometriaValidada !== undefined) application.biometriaValidada = Boolean(biometriaValidada);
     application.asesorId = req.user.id;
 
@@ -444,13 +674,101 @@ async function updateApplicationStatus(req, res, next) {
   }
 }
 
+function sendPdfHeaders(res, fileName) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+}
+
+/**
+ * PDF de la solicitud de crédito con los datos del solicitante y su tabla de amortización
+ * (cliente propietario, asesor o administrador)
+ */
+async function getCreditApplicationPDF(req, res, next) {
+  try {
+    const application = await CreditApplication.findByPk(req.params.id, {
+      include: [
+        {
+          model: CreditSimulation,
+          as: 'simulation',
+          include: [
+            { model: AmortizationRow, as: 'rows' },
+            { model: CreditType, as: 'creditType' },
+          ],
+        },
+      ],
+      order: [[{ model: CreditSimulation, as: 'simulation' }, { model: AmortizationRow, as: 'rows' }, 'numeroCuota', 'ASC']],
+    });
+
+    if (!application) {
+      return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
+    }
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para ver esta solicitud.', 403);
+    }
+    if (!application.simulation) {
+      return errorResponse(res, 'La solicitud no tiene una tabla de amortización asociada.', 404);
+    }
+
+    const institution = await Institution.findOne({ where: { activo: true } });
+    sendPdfHeaders(res, `Solicitud_${application.codigo}.pdf`);
+    generateCreditSimulationPDF(
+      {
+        institution,
+        simulation: application.simulation,
+        rows: application.simulation.rows,
+        application,
+      },
+      res
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PDF de la solicitud de inversión (cliente propietario, asesor o administrador)
+ */
+async function getInvestmentApplicationPDF(req, res, next) {
+  try {
+    const application = await InvestmentApplication.findByPk(req.params.id, {
+      include: [
+        {
+          model: InvestmentSimulation,
+          as: 'simulation',
+          include: [{ model: InvestmentProduct, as: 'product' }],
+        },
+      ],
+    });
+
+    if (!application) {
+      return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
+    }
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para ver esta solicitud.', 403);
+    }
+    if (!application.simulation) {
+      return errorResponse(res, 'La solicitud no tiene un cálculo de rendimiento asociado.', 404);
+    }
+
+    const institution = await Institution.findOne({ where: { activo: true } });
+    sendPdfHeaders(res, `Solicitud_${application.codigo}.pdf`);
+    generateInvestmentSimulationPDF({ institution, simulation: application.simulation, application }, res);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
+  CLOSED_STATUSES,
+  STATUS_TRANSITIONS,
   createCreditApplication,
   getMyCreditApplications,
   getCreditApplicationById,
   createInvestmentApplication,
   getMyInvestmentApplications,
   getInvestmentApplicationById,
+  getCreditApplicationPDF,
+  getInvestmentApplicationPDF,
   getAllApplications,
   updateApplicationStatus,
 };

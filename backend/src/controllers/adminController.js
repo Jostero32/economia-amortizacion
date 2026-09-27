@@ -11,6 +11,7 @@ const {
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
+const { todayISO } = require('../utils/dates');
 
 // 1. Institución
 async function updateInstitution(req, res, next) {
@@ -95,6 +96,7 @@ async function createCreditProduct(req, res, next) {
       plazoMinimo,
       plazoMaximo,
       icono,
+      frecuenciasPago,
     } = req.body;
 
     const segment = await CreditSegment.findByPk(segmentId);
@@ -121,6 +123,7 @@ async function createCreditProduct(req, res, next) {
       plazoMinimo: plazoMinimo || 3,
       plazoMaximo: plazoMaximo || 72,
       icono: icono || 'credit_card',
+      frecuenciasPago: frecuenciasPago || ['MENSUAL'],
       activo: true,
     });
 
@@ -128,7 +131,7 @@ async function createCreditProduct(req, res, next) {
     await CreditRate.create({
       creditTypeId: product.id,
       tasa: Number(tasaInstitucion),
-      fechaVigencia: new Date().toISOString().split('T')[0],
+      fechaVigencia: todayISO(),
       fuente: 'Configuración Administrativa',
       activo: true,
     });
@@ -169,6 +172,7 @@ async function updateCreditProduct(req, res, next) {
       plazoMaximo,
       activo,
       icono,
+      frecuenciasPago,
     } = req.body;
 
     let segment = product.segment;
@@ -177,6 +181,18 @@ async function updateCreditProduct(req, res, next) {
       if (!segment) {
         return errorResponse(res, 'Segmento de crédito regulatorio no encontrado.', 404);
       }
+    }
+
+    // Los límites deben ser coherentes también con los valores ya guardados
+    const nextMontoMinimo = Number(montoMinimo !== undefined ? montoMinimo : product.montoMinimo);
+    const nextMontoMaximo = Number(montoMaximo !== undefined ? montoMaximo : product.montoMaximo);
+    const nextPlazoMinimo = Number(plazoMinimo !== undefined ? plazoMinimo : product.plazoMinimo);
+    const nextPlazoMaximo = Number(plazoMaximo !== undefined ? plazoMaximo : product.plazoMaximo);
+    if (nextMontoMaximo < nextMontoMinimo) {
+      return errorResponse(res, 'El monto máximo no puede ser menor al monto mínimo.', 400);
+    }
+    if (nextPlazoMaximo < nextPlazoMinimo) {
+      return errorResponse(res, 'El plazo máximo no puede ser menor al plazo mínimo.', 400);
     }
 
     // Si se modifica la tasa, validar contra la tasa máxima vigente del segmento
@@ -191,7 +207,7 @@ async function updateCreditProduct(req, res, next) {
 
     // Si cambió la tasa, cerrar vigencia de la anterior y crear nuevo registro histórico
     if (tasaInstitucion !== undefined && Number(tasaInstitucion) !== Number(product.tasaInstitucion)) {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = todayISO();
 
       // Finalizar tasa anterior
       await CreditRate.update(
@@ -232,6 +248,7 @@ async function updateCreditProduct(req, res, next) {
       plazoMaximo: plazoMaximo !== undefined ? plazoMaximo : product.plazoMaximo,
       activo: activo !== undefined ? activo : product.activo,
       icono: icono !== undefined ? icono : product.icono,
+      frecuenciasPago: frecuenciasPago !== undefined ? frecuenciasPago : product.frecuenciasPago,
     });
 
     await logAudit({
@@ -274,20 +291,59 @@ async function deleteCreditProduct(req, res, next) {
 }
 
 // 3. Cobros Adicionales (Charges)
+const CHARGE_FIELDS = [
+  'nombre',
+  'categoria',
+  'tipo',
+  'valor',
+  'porcentaje',
+  'baseCalculo',
+  'aplicacion',
+  'anualizarSiPlazoMenorAnio',
+  'obligatorio',
+  'creditTypeId',
+  'descripcion',
+  'activo',
+];
+
+function pickChargeFields(source) {
+  const data = {};
+  CHARGE_FIELDS.forEach((field) => {
+    if (source[field] !== undefined) data[field] = source[field];
+  });
+  if (data.creditTypeId === '' || data.creditTypeId === 0) data.creditTypeId = null;
+  // Solo un porcentaje sobre el monto puede prorratearse por plazo (regla de SOLCA)
+  if (data.tipo === 'VALOR_FIJO') data.anualizarSiPlazoMenorAnio = false;
+  return data;
+}
+
+async function getCharges(req, res, next) {
+  try {
+    const charges = await Charge.findAll({
+      include: [{ model: CreditType, as: 'creditType', attributes: ['id', 'nombre'] }],
+      order: [['activo', 'DESC'], ['id', 'ASC']],
+    });
+    return successResponse(res, { charges });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function createCharge(req, res, next) {
   try {
-    const { nombre, tipo, valor, porcentaje, baseCalculo, aplicacion, obligatorio, creditTypeId, descripcion } = req.body;
+    const data = pickChargeFields(req.body);
+
+    if (data.creditTypeId) {
+      const product = await CreditType.findByPk(data.creditTypeId);
+      if (!product) return errorResponse(res, 'El producto de crédito indicado no existe.', 404);
+    }
 
     const charge = await Charge.create({
-      nombre,
-      tipo: tipo || 'PORCENTAJE',
-      valor: valor || 0,
-      porcentaje: porcentaje || 0,
-      baseCalculo: baseCalculo || 'MONTO_OPERACION',
-      aplicacion: aplicacion || 'UNA_VEZ',
-      obligatorio: obligatorio !== undefined ? obligatorio : false,
-      creditTypeId: creditTypeId || null,
-      descripcion: descripcion || null,
+      baseCalculo: 'MONTO_OPERACION',
+      obligatorio: false,
+      valor: 0,
+      porcentaje: 0,
+      ...data,
       activo: true,
     });
 
@@ -296,7 +352,7 @@ async function createCharge(req, res, next) {
       accion: 'CREAR_COBRO',
       entidad: 'Charge',
       entidadId: charge.id,
-      detalles: req.body,
+      detalles: data,
     });
 
     return successResponse(res, { charge }, 201, 'Cobro adicional registrado con éxito.');
@@ -311,14 +367,21 @@ async function updateCharge(req, res, next) {
     const charge = await Charge.findByPk(id);
     if (!charge) return errorResponse(res, 'Cobro adicional no encontrado.', 404);
 
-    await charge.update(req.body);
+    const data = pickChargeFields(req.body);
+    if (data.creditTypeId) {
+      const product = await CreditType.findByPk(data.creditTypeId);
+      if (!product) return errorResponse(res, 'El producto de crédito indicado no existe.', 404);
+    }
+
+    const anterior = charge.get({ plain: true });
+    await charge.update(data);
 
     await logAudit({
       req,
       accion: 'EDITAR_COBRO',
       entidad: 'Charge',
       entidadId: charge.id,
-      detalles: req.body,
+      detalles: { anterior, cambios: data },
     });
 
     return successResponse(res, { charge }, 200, 'Cobro adicional actualizado correctamente.');
@@ -336,6 +399,14 @@ async function deleteCharge(req, res, next) {
     charge.activo = false;
     await charge.save();
 
+    await logAudit({
+      req,
+      accion: 'EDITAR_COBRO',
+      entidad: 'Charge',
+      entidadId: charge.id,
+      detalles: { accion: 'Desactivación del cobro', nombre: charge.nombre },
+    });
+
     return successResponse(res, null, 200, 'Cobro desactivado correctamente.');
   } catch (error) {
     next(error);
@@ -345,18 +416,31 @@ async function deleteCharge(req, res, next) {
 // 4. Inversiones
 async function createInvestmentProduct(req, res, next) {
   try {
-    const { nombre, descripcion, montoMinimo, montoMaximo, plazoMinimoDias, plazoMaximoDias, tasa, fuente } = req.body;
+    const {
+      nombre,
+      descripcion,
+      montoMinimo,
+      montoMaximo,
+      plazoMinimoDias,
+      plazoMaximoDias,
+      tasa,
+      tipo,
+      pagoIntereses,
+      fuente,
+    } = req.body;
 
     const product = await InvestmentProduct.create({
       nombre,
       descripcion,
-      montoMinimo: montoMinimo || 500,
-      montoMaximo: montoMaximo || 500000,
-      plazoMinimoDias: plazoMinimoDias || 30,
-      plazoMaximoDias: plazoMaximoDias || 1080,
-      tasa: tasa || 5.09,
-      fuente: fuente || 'Banco Central del Ecuador',
-      fechaVigencia: new Date().toISOString().split('T')[0],
+      montoMinimo,
+      montoMaximo,
+      plazoMinimoDias,
+      plazoMaximoDias,
+      tasa,
+      tipo: tipo || 'PLAZO_FIJO',
+      pagoIntereses: pagoIntereses || 'AL_VENCIMIENTO',
+      fuente: fuente || 'Resolución Administrativa',
+      fechaVigencia: todayISO(),
       activo: true,
     });
 
@@ -374,13 +458,179 @@ async function createInvestmentProduct(req, res, next) {
   }
 }
 
+async function getInvestmentProductsAdmin(req, res, next) {
+  try {
+    const products = await InvestmentProduct.findAll({
+      include: [{ model: InvestmentRate, as: 'rates' }],
+      order: [['activo', 'DESC'], ['id', 'ASC'], [{ model: InvestmentRate, as: 'rates' }, 'plazoMinDias', 'ASC']],
+    });
+    return successResponse(res, { products });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Verifica que un tramo esté dentro del plazo del producto y no se cruce con otro tramo activo
+ */
+async function validateRateRange(product, { plazoMinDias, plazoMaxDias }, excludeRateId = null) {
+  if (plazoMinDias < product.plazoMinimoDias || plazoMaxDias > product.plazoMaximoDias) {
+    return `El tramo debe estar dentro del plazo del producto (${product.plazoMinimoDias} a ${product.plazoMaximoDias} días).`;
+  }
+  const activeRates = await InvestmentRate.findAll({
+    where: { investmentProductId: product.id, activo: true },
+  });
+  const overlapping = activeRates.find((rate) => rate.id !== excludeRateId
+    && plazoMinDias <= rate.plazoMaxDias
+    && plazoMaxDias >= rate.plazoMinDias);
+  if (overlapping) {
+    return `El tramo se cruza con el tramo de ${overlapping.plazoMinDias} a ${overlapping.plazoMaxDias} días.`;
+  }
+  return null;
+}
+
+async function createInvestmentRate(req, res, next) {
+  try {
+    const product = await InvestmentProduct.findByPk(req.params.id);
+    if (!product) return errorResponse(res, 'Producto de inversión no encontrado.', 404);
+
+    const data = {
+      plazoMinDias: Number(req.body.plazoMinDias),
+      plazoMaxDias: Number(req.body.plazoMaxDias),
+      tasa: Number(req.body.tasa),
+    };
+    const rangeError = await validateRateRange(product, data);
+    if (rangeError) return errorResponse(res, rangeError, 400);
+
+    const rate = await InvestmentRate.create({
+      ...data,
+      investmentProductId: product.id,
+      fuente: req.body.fuente || 'Resolución Administrativa',
+      fechaVigencia: todayISO(),
+      activo: true,
+    });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: rate.id,
+      detalles: { producto: product.nombre, ...data },
+    });
+
+    return successResponse(res, { rate }, 201, 'Tramo de tasa registrado.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Cambia la tasa de un tramo conservando el histórico: el tramo vigente se desactiva y se crea
+ * uno nuevo con la tasa actualizada desde hoy.
+ */
+async function updateInvestmentRate(req, res, next) {
+  try {
+    const rate = await InvestmentRate.findOne({
+      where: { id: req.params.rateId, investmentProductId: req.params.id, activo: true },
+    });
+    if (!rate) return errorResponse(res, 'Tramo de tasa no encontrado o inactivo.', 404);
+
+    const nuevaTasa = Number(req.body.tasa);
+    await rate.update({ activo: false });
+    const nuevo = await InvestmentRate.create({
+      investmentProductId: rate.investmentProductId,
+      plazoMinDias: rate.plazoMinDias,
+      plazoMaxDias: rate.plazoMaxDias,
+      tasa: nuevaTasa,
+      fuente: req.body.fuente || 'Resolución Administrativa',
+      fechaVigencia: todayISO(),
+      activo: true,
+    });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: nuevo.id,
+      detalles: {
+        tramo: `${rate.plazoMinDias}-${rate.plazoMaxDias} días`,
+        tasaAnterior: Number(rate.tasa),
+        nuevaTasa,
+      },
+    });
+
+    return successResponse(res, { rate: nuevo }, 200, 'Tasa del tramo actualizada.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteInvestmentRate(req, res, next) {
+  try {
+    const rate = await InvestmentRate.findOne({
+      where: { id: req.params.rateId, investmentProductId: req.params.id },
+    });
+    if (!rate) return errorResponse(res, 'Tramo de tasa no encontrado.', 404);
+
+    await rate.update({ activo: false });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'InvestmentRate',
+      entidadId: rate.id,
+      detalles: { accion: 'Desactivación del tramo', tramo: `${rate.plazoMinDias}-${rate.plazoMaxDias} días` },
+    });
+
+    return successResponse(res, null, 200, 'Tramo desactivado.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+const INVESTMENT_PRODUCT_FIELDS = [
+  'nombre',
+  'descripcion',
+  'montoMinimo',
+  'montoMaximo',
+  'plazoMinimoDias',
+  'plazoMaximoDias',
+  'tasa',
+  'tipo',
+  'pagoIntereses',
+  'fuente',
+  'activo',
+];
+
 async function updateInvestmentProduct(req, res, next) {
   try {
     const { id } = req.params;
     const product = await InvestmentProduct.findByPk(id);
     if (!product) return errorResponse(res, 'Producto de inversión no encontrado.', 404);
 
-    await product.update(req.body);
+    const data = {};
+    INVESTMENT_PRODUCT_FIELDS.forEach((field) => {
+      if (req.body[field] !== undefined) data[field] = req.body[field];
+    });
+
+    const merged = { ...product.get({ plain: true }), ...data };
+    if (Number(merged.montoMaximo) < Number(merged.montoMinimo)) {
+      return errorResponse(res, 'El monto máximo no puede ser menor al monto mínimo.', 400);
+    }
+    if (Number(merged.plazoMaximoDias) < Number(merged.plazoMinimoDias)) {
+      return errorResponse(res, 'El plazo máximo no puede ser menor al plazo mínimo.', 400);
+    }
+
+    const anterior = product.get({ plain: true });
+    await product.update(data);
+
+    await logAudit({
+      req,
+      accion: 'EDITAR_INVERSION',
+      entidad: 'InvestmentProduct',
+      entidadId: product.id,
+      detalles: { anterior, cambios: data },
+    });
 
     return successResponse(res, { product }, 200, 'Producto de inversión actualizado.');
   } catch (error) {
@@ -396,6 +646,14 @@ async function deleteInvestmentProduct(req, res, next) {
 
     product.activo = false;
     await product.save();
+
+    await logAudit({
+      req,
+      accion: 'EDITAR_INVERSION',
+      entidad: 'InvestmentProduct',
+      entidadId: product.id,
+      detalles: { accion: 'Desactivación del producto', nombre: product.nombre },
+    });
 
     return successResponse(res, null, 200, 'Producto de inversión desactivado.');
   } catch (error) {
@@ -421,7 +679,19 @@ async function createRate(req, res, next) {
       );
     }
 
-    const todayStr = fechaVigencia || new Date().toISOString().split('T')[0];
+    const todayStr = fechaVigencia || todayISO();
+
+    const vigente = await CreditRate.findOne({
+      where: { creditTypeId, fechaFinVigencia: null },
+      order: [['fechaVigencia', 'DESC']],
+    });
+    if (vigente && todayStr < vigente.fechaVigencia) {
+      return errorResponse(
+        res,
+        `La nueva tasa no puede regir antes que la tasa vigente (desde ${vigente.fechaVigencia}).`,
+        400
+      );
+    }
 
     // Cerrar vigencia anterior
     await CreditRate.update(
@@ -461,7 +731,23 @@ async function updateRate(req, res, next) {
     const rate = await CreditRate.findByPk(id);
     if (!rate) return errorResponse(res, 'Registro de tasa no encontrado.', 404);
 
-    await rate.update(req.body);
+    // El histórico de tasas no se reescribe: para cambiar la tasa se registra una nueva vigencia.
+    // Solo se permite corregir la fuente o resolución que la respalda.
+    if (req.body.fuente === undefined) {
+      return errorResponse(res, 'Solo se puede corregir la fuente de la tasa. Para cambiarla registra una nueva tasa.', 400);
+    }
+
+    const fuenteAnterior = rate.fuente;
+    await rate.update({ fuente: String(req.body.fuente).trim() });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'CreditRate',
+      entidadId: rate.id,
+      detalles: { fuenteAnterior, fuente: rate.fuente },
+    });
+
     return successResponse(res, { rate }, 200, 'Tasa actualizada.');
   } catch (error) {
     next(error);
@@ -564,12 +850,17 @@ module.exports = {
   createCreditProduct,
   updateCreditProduct,
   deleteCreditProduct,
+  getCharges,
   createCharge,
   updateCharge,
   deleteCharge,
+  getInvestmentProductsAdmin,
   createInvestmentProduct,
   updateInvestmentProduct,
   deleteInvestmentProduct,
+  createInvestmentRate,
+  updateInvestmentRate,
+  deleteInvestmentRate,
   createRate,
   updateRate,
   getAuditLogs,

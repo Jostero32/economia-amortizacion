@@ -27,14 +27,53 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    // Sin respuesta del servidor: problema de red o servidor caído
+    const fallbackMessage = error.response
+      ? 'Ocurrió un problema al procesar tu solicitud. Intenta nuevamente.'
+      : 'No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.';
     const customError = {
-      message: error.response?.data?.message || error.message || 'Error en la conexión con el servidor',
-      statusCode: error.response?.status || 500,
+      message: error.response?.data?.message || fallbackMessage,
+      statusCode: error.response?.status || 0,
+      // Errores por campo: { campo: mensaje }
       errors: error.response?.data?.errors || null,
     };
     return Promise.reject(customError);
   }
 );
+
+/**
+ * Descarga un archivo del API usando la cookie de sesión y lo guarda con el nombre indicado.
+ * Se usa en lugar de window.open para que funcione también con endpoints protegidos.
+ */
+export async function downloadFile(path, fileName) {
+  try {
+    const response = await axios.get(`${API_BASE_URL}${path}`, {
+      responseType: 'blob',
+      withCredentials: true,
+    });
+    const url = window.URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    let message = 'No se pudo descargar el archivo. Intenta nuevamente.';
+    const data = error.response?.data;
+    if (data instanceof Blob) {
+      try {
+        message = JSON.parse(await data.text()).message || message;
+      } catch {
+        // La respuesta de error no es JSON: se mantiene el mensaje genérico
+      }
+    }
+    throw { message, statusCode: error.response?.status || 500 };
+  }
+}
+
+const shortId = (id) => String(id).slice(0, 8);
 
 // Endpoints de Autenticación
 export const authService = {
@@ -50,14 +89,20 @@ export const publicService = {
   getCreditProducts: () => api.get('/credit-products'),
   getCreditProductById: (id) => api.get(`/credit-products/${id}`),
   simulateCredit: (data) => api.post('/simulations/credits', data),
+  compareCreditSystems: (data) => api.post('/simulations/credits/compare', data),
+  simulateCreditPrepayment: (id, data) => api.post(`/simulations/credits/${id}/prepayment`, data),
   getCreditSimulation: (id) => api.get(`/simulations/credits/${id}`),
   getCreditSimulationPdfUrl: (id) => `${API_BASE_URL}/simulations/credits/${id}/pdf`,
+  downloadCreditSimulationPdf: (id) =>
+    downloadFile(`/simulations/credits/${id}/pdf`, `Simulacion_Credito_${shortId(id)}.pdf`),
 
   getInvestmentProducts: () => api.get('/investment-products'),
   getInvestmentProductById: (id) => api.get(`/investment-products/${id}`),
   simulateInvestment: (data) => api.post('/simulations/investments', data),
   getInvestmentSimulation: (id) => api.get(`/simulations/investments/${id}`),
   getInvestmentSimulationPdfUrl: (id) => `${API_BASE_URL}/simulations/investments/${id}/pdf`,
+  downloadInvestmentSimulationPdf: (id) =>
+    downloadFile(`/simulations/investments/${id}/pdf`, `Simulacion_Inversion_${shortId(id)}.pdf`),
 };
 
 // Endpoints de Cliente
@@ -76,6 +121,11 @@ export const clientService = {
     }),
   getDocumentUrl: (id) => `${API_BASE_URL}/documents/${id}`,
   getMyCreditSimulations: () => api.get('/simulations/my'),
+  getMySimulations: () => api.get('/simulations/my'),
+  downloadCreditApplicationPdf: (application) =>
+    downloadFile(`/credit-applications/${application.id}/pdf`, `Solicitud_${application.codigo || shortId(application.id)}.pdf`),
+  downloadInvestmentApplicationPdf: (application) =>
+    downloadFile(`/investment-applications/${application.id}/pdf`, `Solicitud_${application.codigo || shortId(application.id)}.pdf`),
 };
 
 
@@ -109,10 +159,15 @@ export const adminService = {
   createRate: (data) => api.post('/admin/rates', data),
   updateRate: (id, data) => api.put(`/admin/rates/${id}`, data),
 
+  getCharges: () => api.get('/admin/charges'),
   createCharge: (data) => api.post('/admin/charges', data),
   updateCharge: (id, data) => api.put(`/admin/charges/${id}`, data),
   deleteCharge: (id) => api.delete(`/admin/charges/${id}`),
 
+  getInvestmentProducts: () => api.get('/admin/investments'),
+  createInvestmentRate: (productId, data) => api.post(`/admin/investments/${productId}/rates`, data),
+  updateInvestmentRate: (productId, rateId, data) => api.put(`/admin/investments/${productId}/rates/${rateId}`, data),
+  deleteInvestmentRate: (productId, rateId) => api.delete(`/admin/investments/${productId}/rates/${rateId}`),
   createInvestmentProduct: (data) => api.post('/admin/investments', data),
   updateInvestmentProduct: (id, data) => api.put(`/admin/investments/${id}`, data),
   deleteInvestmentProduct: (id) => api.delete(`/admin/investments/${id}`),

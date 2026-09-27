@@ -3,6 +3,7 @@ const router = express.Router();
 const applicationController = require('../controllers/applicationController');
 const documentController = require('../controllers/documentController');
 const { authenticateToken } = require('../middleware/authMiddleware');
+const { requireRole } = require('../middleware/roleMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 const {
   validateCreditApplication,
@@ -12,18 +13,23 @@ const {
 // Todas las rutas de este módulo requieren token de autenticación
 router.use(authenticateToken);
 
+// Crear solicitudes y subir documentos es exclusivo del cliente (asesor y admin solo revisan)
+const clientOnly = requireRole('CLIENTE');
+
 // Solicitudes de Crédito
-router.post('/credit-applications', validateCreditApplication, applicationController.createCreditApplication);
+router.post('/credit-applications', clientOnly, validateCreditApplication, applicationController.createCreditApplication);
 router.get('/credit-applications/my', applicationController.getMyCreditApplications);
 router.get('/credit-applications/:id', applicationController.getCreditApplicationById);
+router.get('/credit-applications/:id/pdf', applicationController.getCreditApplicationPDF);
 
 // Solicitudes de Inversión
-router.post('/investment-applications', validateInvestmentApplication, applicationController.createInvestmentApplication);
+router.post('/investment-applications', clientOnly, validateInvestmentApplication, applicationController.createInvestmentApplication);
 router.get('/investment-applications/my', applicationController.getMyInvestmentApplications);
 router.get('/investment-applications/:id', applicationController.getInvestmentApplicationById);
+router.get('/investment-applications/:id/pdf', applicationController.getInvestmentApplicationPDF);
 
 // Carga y consulta de Documentos
-router.post('/documents', upload.single('archivo'), documentController.uploadDocument);
+router.post('/documents', clientOnly, upload.single('archivo'), documentController.uploadDocument);
 router.get('/documents/:id', documentController.getDocumentFile);
 
 // Historial de Simulaciones del usuario

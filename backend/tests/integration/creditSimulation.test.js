@@ -9,6 +9,7 @@
 
 const request = require('supertest');
 const app = require('../../src/app');
+const { todayISO, addDays } = require('../../src/utils/dates');
 const { CreditType } = require('../../src/models');
 const { initTestDatabase, cleanDatabase, seedCompleteData, closeTestDatabase } = require('../helpers/dbSetup');
 const { expectCloseToMoney } = require('../helpers/assertions');
@@ -110,6 +111,45 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
       const cargoSolca = sim.desgloseCargos.find(c => c.nombre.includes('SOLCA'));
       expect(cargoSolca).toBeDefined();
       expect(Number(cargoSolca.valor)).toBe(50.00);
+      expect(cargoSolca.momento).toBe('DESEMBOLSO');
+
+      // SOLCA se retiene al desembolso: el cliente recibe 9,950 USD y no se suma a la primera cuota
+      expect(Number(sim.cargosDesembolso)).toBe(50.00);
+      expect(Number(sim.montoLiquido)).toBe(9950.00);
+      expect(Number(rows[0].totalPago)).toBe(Number(rows[0].cuota) + Number(rows[0].cargos));
+
+      // Tasa nominal equivalente con pagos mensuales (BCE, Anexo 1)
+      expect(Number(sim.tasaNominal)).toBeCloseTo(14.707, 2);
+    });
+
+    test('el cliente puede excluir el seguro de desgravamen opcional en consumo', async () => {
+      const base = { creditTypeId: creditoConsumo.id, amount: 10000, termMonths: 12, amortizationSystem: 'FRANCES' };
+
+      const conSeguro = await request(app).post('/api/simulations/credits').send(base);
+      const sinSeguro = await request(app).post('/api/simulations/credits').send({ ...base, cargosOpcionales: [] });
+
+      expect(sinSeguro.status).toBe(201);
+      const nombresSin = sinSeguro.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombresSin).not.toContain('Seguro de Desgravamen');
+      expect(Number(sinSeguro.body.data.rows[0].cargos)).toBe(0);
+      expect(Number(conSeguro.body.data.rows[0].cargos)).toBeGreaterThan(0);
+      expect(conSeguro.body.data.product.requiereDesgravamen).toBe(false);
+    });
+
+    test('en el crédito inmobiliario el desgravamen se cobra aunque el cliente no lo marque', async () => {
+      const inmobiliario = await CreditType.findOne({ where: { nombre: 'Crédito Inmobiliario' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: inmobiliario.id,
+        amount: 30000,
+        termMonths: 120,
+        amortizationSystem: 'FRANCES',
+        cargosOpcionales: [],
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.product.requiereDesgravamen).toBe(true);
+      const nombres = res.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombres).toContain('Seguro de Desgravamen');
     });
   });
 
@@ -173,6 +213,173 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
+    });
+
+    test('rechaza simulación con fecha de inicio en el pasado (Código 400)', async () => {
+      const yesterday = addDays(todayISO(), -1);
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: creditoConsumo.id,
+          amount: 5000,
+          termMonths: 12,
+          amortizationSystem: 'FRANCES',
+          startDate: yesterday,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/fecha de desembolso no puede ser anterior a hoy/i);
+      expect(res.body.errors.startDate).toBeDefined();
+    });
+
+    test('rechaza una fecha de desembolso a más de 90 días', async () => {
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: creditoConsumo.id,
+          amount: 5000,
+          termMonths: 12,
+          amortizationSystem: 'FRANCES',
+          startDate: addDays(todayISO(), 91),
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.startDate).toMatch(/90 días/);
+    });
+
+    test('rechaza montos con más de 2 decimales con un mensaje simple por campo', async () => {
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: creditoConsumo.id,
+          amount: '5000.123',
+          termMonths: 12,
+          amortizationSystem: 'FRANCES',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('El monto debe ser un número con máximo 2 decimales.');
+      expect(res.body.errors.amount).toBeDefined();
+    });
+  });
+
+  describe('Frecuencia de pago y póliza de desgravamen propia', () => {
+    test('el microcrédito admite pagos trimestrales', async () => {
+      const micro = await CreditType.findOne({ where: { nombre: 'Microcrédito' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: micro.id,
+        amount: 6000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'TRIMESTRAL',
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.simulation.frecuenciaPago).toBe('TRIMESTRAL');
+      expect(res.body.data.rows).toHaveLength(8);
+      expect(res.body.data.product.frecuenciasPago).toContain('SEMESTRAL');
+    });
+
+    test('rechaza una frecuencia no habilitada en el producto', async () => {
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 6000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'TRIMESTRAL',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/frecuencia de pago elegida no está disponible/);
+    });
+
+    test('rechaza un plazo que no es múltiplo de la frecuencia con un mensaje claro', async () => {
+      const micro = await CreditType.findOne({ where: { nombre: 'Microcrédito' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: micro.id,
+        amount: 6000,
+        termMonths: 10,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'SEMESTRAL',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/múltiplo de 6 meses/);
+    });
+
+    test('en vivienda, con póliza propia endosada no se cobra el desgravamen de la entidad', async () => {
+      const inmobiliario = await CreditType.findOne({ where: { nombre: 'Crédito Inmobiliario' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: inmobiliario.id,
+        amount: 30000,
+        termMonths: 120,
+        amortizationSystem: 'FRANCES',
+        polizaDesgravamenPropia: true,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.simulation.polizaDesgravamenPropia).toBe(true);
+      const nombres = res.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombres).not.toContain('Seguro de Desgravamen');
+      expect(Number(res.body.data.rows[0].cargos)).toBe(0);
+    });
+  });
+
+  describe('Abono extraordinario', () => {
+    test('POST /api/simulations/credits/:id/prepayment compara el cronograma sin modificar la simulación', async () => {
+      const sim = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 10000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+      });
+      const id = sim.body.data.simulation.id;
+
+      const res = await request(app)
+        .post(`/api/simulations/credits/${id}/prepayment`)
+        .send({ despuesDeCuota: 6, monto: 3000, opcion: 'REDUCIR_PLAZO' });
+
+      expect(res.status).toBe(200);
+      const { prepayment } = res.body.data;
+      expect(prepayment.nuevo.cuotas).toBeLessThan(18);
+      expect(prepayment.ahorroIntereses).toBeGreaterThan(0);
+      // El desgravamen se recalcula sobre el nuevo saldo
+      expect(prepayment.nuevo.rows[0].cargos).toBeGreaterThan(0);
+
+      const stored = await request(app).get(`/api/simulations/credits/${id}`);
+      expect(stored.body.data.simulation.rows).toHaveLength(24);
+    });
+
+    test('rechaza un abono mayor al saldo con un mensaje claro', async () => {
+      const sim = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 5000,
+        termMonths: 12,
+        amortizationSystem: 'ALEMAN',
+      });
+      const res = await request(app)
+        .post(`/api/simulations/credits/${sim.body.data.simulation.id}/prepayment`)
+        .send({ despuesDeCuota: 3, monto: 9000, opcion: 'REDUCIR_CUOTA' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no puede superar el saldo/);
+    });
+  });
+
+  describe('Comparación de sistemas sin guardar simulaciones', () => {
+    test('POST /api/simulations/credits/compare devuelve francés y alemán y no crea registros', async () => {
+      const { CreditSimulation } = require('../../src/models');
+      const before = await CreditSimulation.count();
+
+      const res = await request(app)
+        .post('/api/simulations/credits/compare')
+        .send({ creditTypeId: creditoConsumo.id, amount: 10000, termMonths: 24 });
+
+      expect(res.status).toBe(200);
+      const { frances, aleman } = res.body.data;
+      // La cuota francesa es constante; la alemana empieza más alta y termina más baja
+      expect(aleman.primeraCuota).toBeGreaterThan(frances.primeraCuota);
+      expect(aleman.ultimaCuota).toBeLessThan(frances.ultimaCuota);
+      // El sistema alemán amortiza más rápido y paga menos intereses
+      expect(aleman.totalIntereses).toBeLessThan(frances.totalIntereses);
+      expect(await CreditSimulation.count()).toBe(before);
     });
   });
 

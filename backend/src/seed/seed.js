@@ -45,7 +45,7 @@ async function seedDatabase() {
       email: 'admin@finanecuador.local',
       password: 'Admin123!',
       rol: 'ADMIN',
-      cedula: '1710000001',
+      cedula: '1710000017',
       telefono: '0991112233',
     },
     {
@@ -53,7 +53,7 @@ async function seedDatabase() {
       email: 'asesor@finanecuador.local',
       password: 'Asesor123!',
       rol: 'ASESOR',
-      cedula: '1710000002',
+      cedula: '1710000025',
       telefono: '0992223344',
     },
     {
@@ -61,16 +61,26 @@ async function seedDatabase() {
       email: 'cliente@finanecuador.local',
       password: 'Cliente123!',
       rol: 'CLIENTE',
-      cedula: '1710000003',
+      cedula: '1710000033',
       telefono: '0993334455',
     },
   ];
+
+  // Cédulas demo de versiones anteriores que no cumplían el dígito verificador
+  const cedulasDemoAnteriores = {
+    '1710000001': '1710000017',
+    '1710000002': '1710000025',
+    '1710000003': '1710000033',
+  };
 
   for (const u of usersToCreate) {
     const exists = await User.findOne({ where: { email: u.email } });
     if (!exists) {
       await User.create(u);
       console.log(`[Seed] Usuario ${u.rol} (${u.email}) creado.`);
+    } else if (cedulasDemoAnteriores[exists.cedula] === u.cedula) {
+      await exists.update({ cedula: u.cedula });
+      console.log(`[Seed] Cédula del usuario demo ${u.email} actualizada a una cédula válida.`);
     }
   }
 
@@ -152,6 +162,69 @@ async function seedDatabase() {
       plazoMinimo: 3,
       plazoMaximo: 36,
     },
+    {
+      nombre: 'Crédito Emergente',
+      segmentCode: 'CONSUMO',
+      descripcion: 'Préstamo de consumo a corto plazo para imprevistos. Plazo menor a un año: la contribución SOLCA se anualiza. (Valores demostrativos)',
+      montoMinimo: 300,
+      montoMaximo: 3000,
+      plazoMinimo: 3,
+      plazoMaximo: 11,
+    },
+    {
+      nombre: 'Crédito Educativo Social',
+      segmentCode: 'EDUCATIVO_SOCIAL',
+      descripcion: 'Financiamiento de estudios para personas de menores ingresos con tasa preferencial. (Valores demostrativos)',
+      montoMinimo: 500,
+      montoMaximo: 15000,
+      plazoMinimo: 12,
+      plazoMaximo: 60,
+    },
+    {
+      nombre: 'Vivienda de Interés Social (VIS)',
+      segmentCode: 'VIVIENDA_VIS',
+      descripcion: 'Compra de primera vivienda de interés social con tasa preferencial. Incluye seguro de desgravamen obligatorio. (Valores demostrativos)',
+      montoMinimo: 15000,
+      montoMaximo: 80000,
+      plazoMinimo: 60,
+      plazoMaximo: 300,
+    },
+    {
+      nombre: 'Vivienda de Interés Público (VIP)',
+      segmentCode: 'VIVIENDA_VIP',
+      descripcion: 'Compra de primera vivienda de interés público con tasa preferencial. Incluye seguro de desgravamen obligatorio. (Valores demostrativos)',
+      montoMinimo: 30000,
+      montoMaximo: 110000,
+      plazoMinimo: 60,
+      plazoMaximo: 300,
+    },
+    {
+      nombre: 'Microcrédito de Acumulación Simple',
+      segmentCode: 'MICRO_ACUM_SIMPLE',
+      descripcion: 'Capital de trabajo y activos para negocios en crecimiento. (Valores demostrativos)',
+      montoMinimo: 1000,
+      montoMaximo: 20000,
+      plazoMinimo: 6,
+      plazoMaximo: 48,
+    },
+    {
+      nombre: 'Microcrédito de Acumulación Ampliada',
+      segmentCode: 'MICRO_ACUM_AMPLIADA',
+      descripcion: 'Financiamiento para microempresas consolidadas con mayores ventas. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 50000,
+      plazoMinimo: 12,
+      plazoMaximo: 60,
+    },
+    {
+      nombre: 'Crédito Productivo PYMES',
+      segmentCode: 'PROD_PYMES',
+      descripcion: 'Capital de trabajo y activos fijos para pequeñas y medianas empresas. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 250000,
+      plazoMinimo: 12,
+      plazoMaximo: 84,
+    },
   ];
 
   for (const ct of creditTypesData) {
@@ -168,6 +241,10 @@ async function seedDatabase() {
           montoMaximo: ct.montoMaximo,
           plazoMinimo: ct.plazoMinimo,
           plazoMaximo: ct.plazoMaximo,
+          // Microcrédito y productivo admiten pagos bimestrales, trimestrales o semestrales
+          frecuenciasPago: /^(MICRO_|PROD_)/.test(ct.segmentCode)
+            ? ['MENSUAL', 'BIMESTRAL', 'TRIMESTRAL', 'SEMESTRAL']
+            : ['MENSUAL'],
           activo: true,
         },
       });
@@ -187,83 +264,159 @@ async function seedDatabase() {
   console.log('[Seed] Productos de crédito y tasas históricas asegurados.');
 
   // 5. Cobros Adicionales (SOLCA y Desgravamen)
-  const solcaExists = await Charge.findOne({ where: { nombre: 'Contribución SOLCA' } });
-  if (!solcaExists) {
-    await Charge.create({
-      nombre: 'Contribución SOLCA',
-      tipo: 'PORCENTAJE',
-      valor: 0.00,
-      porcentaje: 0.5000, // 0.50%
-      baseCalculo: 'MONTO_OPERACION',
-      aplicacion: 'UNA_VEZ',
-      obligatorio: true,
-      creditTypeId: null, // Aplica a todos los créditos
-      descripcion: 'Contribución del 0,5% sobre la operación de crédito, conforme al marco legal aplicable.',
-      activo: true,
+  const solcaData = {
+    nombre: 'Contribución SOLCA',
+    categoria: 'IMPUESTO',
+    tipo: 'PORCENTAJE',
+    valor: 0.00,
+    porcentaje: 0.5000, // 0.50%
+    baseCalculo: 'MONTO_OPERACION',
+    aplicacion: 'UNA_VEZ', // Retenida al desembolso
+    anualizarSiPlazoMenorAnio: true,
+    obligatorio: true,
+    creditTypeId: null, // Aplica a todos los créditos
+    descripcion: 'Contribución del 0,5 % sobre el monto del crédito, retenida al desembolso. Si el plazo es menor a un año se calcula de forma anualizada (monto × 0,5 % × días/360).',
+    activo: true,
+  };
+  const solca = await Charge.findOne({ where: { nombre: solcaData.nombre } });
+  if (!solca) {
+    await Charge.create(solcaData);
+    console.log('[Seed] Cobro "Contribución SOLCA" (0.50% al desembolso) registrado.');
+  } else if (solca.categoria !== 'IMPUESTO') {
+    // Bases creadas antes de clasificar los cargos
+    await solca.update({
+      categoria: 'IMPUESTO',
+      anualizarSiPlazoMenorAnio: true,
+      descripcion: solcaData.descripcion,
     });
-    console.log('[Seed] Cobro "Contribución SOLCA" (0.50% una sola vez) registrado.');
+    console.log('[Seed] Cobro "Contribución SOLCA" clasificado como impuesto de ley anualizable.');
   }
 
-  const desgravamenExists = await Charge.findOne({ where: { nombre: 'Seguro de Desgravamen' } });
-  if (!desgravamenExists) {
-    await Charge.create({
-      nombre: 'Seguro de Desgravamen',
-      tipo: 'PORCENTAJE',
-      valor: 0.00,
-      porcentaje: 0.0500, // 0.05% mensual sobre saldo insoluto
-      baseCalculo: 'SALDO_INSOLUTO',
-      aplicacion: 'MENSUAL',
-      obligatorio: false,
-      creditTypeId: null,
-      descripcion: 'Seguro de desgravamen configurable para protección del crédito en caso de fallecimiento (Valor demostrativo).',
-      activo: true,
-    });
+  const desgravamenData = {
+    nombre: 'Seguro de Desgravamen',
+    categoria: 'SEGURO_DESGRAVAMEN',
+    tipo: 'PORCENTAJE',
+    valor: 0.00,
+    porcentaje: 0.0500, // 0.05% mensual sobre saldo insoluto
+    baseCalculo: 'SALDO_INSOLUTO',
+    aplicacion: 'MENSUAL',
+    obligatorio: false, // Opcional salvo en créditos de vivienda
+    creditTypeId: null,
+    descripcion: 'Prima mensual sobre el saldo de capital (valor demostrativo). Obligatorio en créditos de vivienda; en los demás lo decide el cliente.',
+    activo: true,
+  };
+  const desgravamen = await Charge.findOne({ where: { nombre: desgravamenData.nombre } });
+  if (!desgravamen) {
+    await Charge.create(desgravamenData);
     console.log('[Seed] Cobro "Seguro de Desgravamen" configurable registrado.');
+  } else if (desgravamen.categoria !== 'SEGURO_DESGRAVAMEN') {
+    await desgravamen.update({
+      categoria: 'SEGURO_DESGRAVAMEN',
+      descripcion: desgravamenData.descripcion,
+    });
+    console.log('[Seed] Cobro "Seguro de Desgravamen" clasificado como seguro de desgravamen.');
   }
 
-  // 6. Inversiones a Plazo Fijo y Tasas BCE
-  const [invProduct] = await InvestmentProduct.findOrCreate({
-    where: { nombre: 'Depósito a Plazo Fijo' },
-    defaults: {
+  // 6. Inversiones a Plazo Fijo y tramos de tasas por plazo
+  const investmentProductsData = [
+    {
       nombre: 'Depósito a Plazo Fijo',
-      descripcion: 'Inversión a plazo fijo con rendimiento garantizado según tramo de días conforme a tasas referenciales BCE.',
+      descripcion: 'Inversión a plazo fijo con rendimiento según el tramo de días; capital e intereses se pagan al vencimiento.',
       montoMinimo: 500,
       montoMaximo: 500000,
       plazoMinimoDias: 30,
       plazoMaximoDias: 1080,
       tasa: 5.09,
-      fuente: 'Banco Central del Ecuador',
-      fechaVigencia: '2026-09-01',
-      activo: true,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.03 },
+        { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.40 },
+        { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.41 },
+        { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.46 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.09 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.26 },
+      ],
     },
-  });
-
-  const investmentRatesData = [
-    { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.03 },
-    { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.40 },
-    { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.41 },
-    { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.46 },
-    { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.09 },
-    { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.26 },
+    {
+      nombre: 'Depósito a Plazo con Pago Mensual',
+      descripcion: 'Recibe tus intereses cada 30 días y tu capital al vencimiento. Tasa algo menor porque cobras los intereses antes. (Valores demostrativos)',
+      montoMinimo: 5000,
+      montoMaximo: 500000,
+      plazoMinimoDias: 90,
+      plazoMaximoDias: 1080,
+      tasa: 4.85,
+      pagoIntereses: 'MENSUAL',
+      rates: [
+        { plazoMinDias: 90, plazoMaxDias: 180, tasa: 4.20 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 4.85 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.00 },
+      ],
+    },
+    {
+      nombre: 'Ahorro Programado',
+      tipo: 'AHORRO_PROGRAMADO',
+      descripcion: 'Ahorra una cuota fija cada mes y recibe lo ahorrado con sus intereses al final del plan. Los montos son del aporte mensual. (Valores demostrativos)',
+      montoMinimo: 20,
+      montoMaximo: 2000,
+      plazoMinimoDias: 180,
+      plazoMaximoDias: 1800,
+      tasa: 5.0,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 180, plazoMaxDias: 360, tasa: 4.50 },
+        { plazoMinDias: 361, plazoMaxDias: 720, tasa: 5.25 },
+        { plazoMinDias: 721, plazoMaxDias: 1800, tasa: 6.00 },
+      ],
+    },
+    {
+      nombre: 'Depósito a Plazo Fijo Plus',
+      descripcion: 'Para montos desde $25.000, con tasas preferenciales en todos los plazos. (Valores demostrativos)',
+      montoMinimo: 25000,
+      montoMaximo: 1000000,
+      plazoMinimoDias: 30,
+      plazoMaximoDias: 1080,
+      tasa: 5.44,
+      pagoIntereses: 'AL_VENCIMIENTO',
+      rates: [
+        { plazoMinDias: 30, plazoMaxDias: 60, tasa: 4.38 },
+        { plazoMinDias: 61, plazoMaxDias: 90, tasa: 4.75 },
+        { plazoMinDias: 91, plazoMaxDias: 120, tasa: 4.76 },
+        { plazoMinDias: 121, plazoMaxDias: 180, tasa: 4.81 },
+        { plazoMinDias: 181, plazoMaxDias: 360, tasa: 5.44 },
+        { plazoMinDias: 361, plazoMaxDias: 1080, tasa: 6.61 },
+      ],
+    },
   ];
 
-  for (const ir of investmentRatesData) {
-    await InvestmentRate.findOrCreate({
-      where: {
-        investmentProductId: invProduct.id,
-        plazoMinDias: ir.plazoMinDias,
-        plazoMaxDias: ir.plazoMaxDias,
-      },
+  for (const { rates, ...productData } of investmentProductsData) {
+    const [invProduct] = await InvestmentProduct.findOrCreate({
+      where: { nombre: productData.nombre },
       defaults: {
-        ...ir,
-        investmentProductId: invProduct.id,
+        ...productData,
         fuente: 'Banco Central del Ecuador',
         fechaVigencia: '2026-09-01',
         activo: true,
       },
     });
+
+    for (const ir of rates) {
+      await InvestmentRate.findOrCreate({
+        where: {
+          investmentProductId: invProduct.id,
+          plazoMinDias: ir.plazoMinDias,
+          plazoMaxDias: ir.plazoMaxDias,
+        },
+        defaults: {
+          ...ir,
+          investmentProductId: invProduct.id,
+          fuente: 'Banco Central del Ecuador',
+          fechaVigencia: '2026-09-01',
+          activo: true,
+        },
+      });
+    }
   }
-  console.log('[Seed] Producto de inversión y tramos de tasas BCE asegurados.');
+  console.log('[Seed] Productos de inversión y tramos de tasas asegurados.');
   console.log('--- Carga de semilla finalizada con éxito ---');
 }
 

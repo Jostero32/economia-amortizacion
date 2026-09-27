@@ -86,6 +86,50 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
     expect(res.body.length).toBeGreaterThan(0);
   });
 
+  test('GET /api/documents/:id impide que otro cliente vea un documento ajeno (403)', async () => {
+    const otherClient = await User.create({
+      nombre: 'Otro Cliente',
+      email: 'otro.cliente@test.local',
+      password: 'Cliente123!',
+      rol: 'CLIENTE',
+    });
+    const res = await request(app)
+      .get(`/api/documents/${cedulaDocumentId}`)
+      .set('Authorization', `Bearer ${generateTestToken(otherClient)}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('GET /api/documents/:id permite al asesor revisar el documento del cliente', async () => {
+    const res = await request(app)
+      .get(`/api/documents/${cedulaDocumentId}`)
+      .set('Authorization', `Bearer ${advisorToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  test('los documentos no se publican como archivos estáticos en /uploads', async () => {
+    const doc = await Document.findByPk(cedulaDocumentId);
+
+    const privateRes = await request(app).get(`/uploads/documentos/${doc.ruta}`);
+    expect(privateRes.status).toBe(404);
+
+    const rootRes = await request(app).get(`/uploads/${doc.ruta}`);
+    expect(rootRes.status).toBe(404);
+  });
+
+  test('POST /api/documents solo lo puede usar el cliente (asesor recibe 403)', async () => {
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .field('tipo', 'OTRO')
+      .field('creditApplicationId', application.id)
+      .attach('archivo', Buffer.from('archivo-asesor'), 'nota.pdf');
+
+    expect(res.status).toBe(403);
+  });
+
   test('POST /api/documents permite subir selfie para biometría simulada', async () => {
     const res = await request(app)
       .post('/api/documents')
@@ -122,6 +166,21 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.document.estado).toBe('VALIDADO');
+  });
+
+  test('rechazar un documento exige indicar el motivo para el cliente', async () => {
+    const withoutReason = await request(app)
+      .patch(`/api/admin/documents/${cedulaDocumentId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ estado: 'RECHAZADO' });
+    expect(withoutReason.status).toBe(400);
+    expect(withoutReason.body.errors.comentarioRevision).toBeDefined();
+
+    const withReason = await request(app)
+      .patch(`/api/admin/documents/${cedulaDocumentId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ estado: 'RECHAZADO', comentarioRevision: 'La imagen está borrosa.' });
+    expect(withReason.status).toBe(200);
   });
 
   test('PATCH /api/admin/applications/:id/status impide aprobar un expediente incompleto', async () => {
