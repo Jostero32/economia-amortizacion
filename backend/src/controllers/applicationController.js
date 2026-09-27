@@ -10,6 +10,7 @@ const {
   InvestmentRate,
   Document,
   User,
+  Institution,
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
@@ -17,6 +18,10 @@ const { roundToTwo, formatMoney } = require('../utils/money');
 const { todayISO, daysBetween, addMonthsClamped, ageOn, toISODate } = require('../utils/dates');
 const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const { quoteCredit, saveCreditSimulation } = require('../services/credit/creditQuote');
+const {
+  generateCreditSimulationPDF,
+  generateInvestmentSimulationPDF,
+} = require('../services/pdf/pdfService');
 
 // Edad máxima al terminar de pagar el crédito (referencia: BIESS 77 años, bancos privados hasta 82)
 const MAX_AGE_AT_MATURITY = 80;
@@ -642,6 +647,90 @@ async function updateApplicationStatus(req, res, next) {
   }
 }
 
+function sendPdfHeaders(res, fileName) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+}
+
+/**
+ * PDF de la solicitud de crédito con los datos del solicitante y su tabla de amortización
+ * (cliente propietario, asesor o administrador)
+ */
+async function getCreditApplicationPDF(req, res, next) {
+  try {
+    const application = await CreditApplication.findByPk(req.params.id, {
+      include: [
+        {
+          model: CreditSimulation,
+          as: 'simulation',
+          include: [
+            { model: AmortizationRow, as: 'rows' },
+            { model: CreditType, as: 'creditType' },
+          ],
+        },
+      ],
+      order: [[{ model: CreditSimulation, as: 'simulation' }, { model: AmortizationRow, as: 'rows' }, 'numeroCuota', 'ASC']],
+    });
+
+    if (!application) {
+      return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
+    }
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para ver esta solicitud.', 403);
+    }
+    if (!application.simulation) {
+      return errorResponse(res, 'La solicitud no tiene una tabla de amortización asociada.', 404);
+    }
+
+    const institution = await Institution.findOne({ where: { activo: true } });
+    sendPdfHeaders(res, `Solicitud_${application.codigo}.pdf`);
+    generateCreditSimulationPDF(
+      {
+        institution,
+        simulation: application.simulation,
+        rows: application.simulation.rows,
+        application,
+      },
+      res
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PDF de la solicitud de inversión (cliente propietario, asesor o administrador)
+ */
+async function getInvestmentApplicationPDF(req, res, next) {
+  try {
+    const application = await InvestmentApplication.findByPk(req.params.id, {
+      include: [
+        {
+          model: InvestmentSimulation,
+          as: 'simulation',
+          include: [{ model: InvestmentProduct, as: 'product' }],
+        },
+      ],
+    });
+
+    if (!application) {
+      return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
+    }
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para ver esta solicitud.', 403);
+    }
+    if (!application.simulation) {
+      return errorResponse(res, 'La solicitud no tiene un cálculo de rendimiento asociado.', 404);
+    }
+
+    const institution = await Institution.findOne({ where: { activo: true } });
+    sendPdfHeaders(res, `Solicitud_${application.codigo}.pdf`);
+    generateInvestmentSimulationPDF({ institution, simulation: application.simulation, application }, res);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   CLOSED_STATUSES,
   STATUS_TRANSITIONS,
@@ -651,6 +740,8 @@ module.exports = {
   createInvestmentApplication,
   getMyInvestmentApplications,
   getInvestmentApplicationById,
+  getCreditApplicationPDF,
+  getInvestmentApplicationPDF,
   getAllApplications,
   updateApplicationStatus,
 };

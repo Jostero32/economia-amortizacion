@@ -223,6 +223,84 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     });
   });
 
+  describe('PDF de la solicitud', () => {
+    let applicationId;
+
+    beforeAll(async () => {
+      const simRes = await request(app)
+        .post('/api/simulations/credits')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({ creditTypeId: creditProduct.id, amount: 2500, termMonths: 12, amortizationSystem: 'FRANCES' });
+      const simulation = simRes.body.data.simulation;
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          simulationId: simulation.id,
+          creditTypeId: simulation.creditTypeId,
+          monto: simulation.monto,
+          plazoMeses: simulation.plazoMeses,
+          sistemaAmortizacion: simulation.sistemaAmortizacion,
+          nombres: 'Carlos',
+          apellidos: 'Mendoza',
+          cedula: '1723456784',
+          direccion: 'Av. 10 de Agosto y Colón',
+          ciudad: 'Quito',
+          telefono: '0998877665',
+          email: 'carlos@cliente.local',
+          fechaNacimiento: '1990-05-15',
+          actividadEconomica: 'Empleado privado',
+          ingresosMensuales: 1500,
+          egresosMensuales: 600,
+          autorizaConsultaBuro: true,
+        });
+      applicationId = res.body.data.application.id;
+    });
+
+    test('el cliente descarga el PDF de su solicitud con la tabla de amortización', async () => {
+      const res = await request(app)
+        .get(`/api/credit-applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('application/pdf');
+      expect(res.headers['content-disposition']).toMatch(/Solicitud_SOL-CRE-\d{4}-\d{6}\.pdf/);
+      expect(res.body.length).toBeGreaterThan(1000);
+    });
+
+    test('el asesor también puede descargarlo y otro cliente no (403)', async () => {
+      const advisorRes = await request(app)
+        .get(`/api/credit-applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${advisorToken}`);
+      expect(advisorRes.status).toBe(200);
+
+      const stranger = await User.create({
+        nombre: 'Cliente Ajeno',
+        email: 'cliente.ajeno@test.local',
+        password: 'Cliente123!',
+        rol: 'CLIENTE',
+      });
+      const strangerRes = await request(app)
+        .get(`/api/credit-applications/${applicationId}/pdf`)
+        .set('Authorization', `Bearer ${generateTestToken(stranger)}`);
+      expect(strangerRes.status).toBe(403);
+    });
+
+    test('el historial del cliente incluye simulaciones de crédito e inversión', async () => {
+      await request(app)
+        .post('/api/simulations/investments')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({ investmentProductId: investmentProduct.id, amount: 5000, termDays: 180 });
+
+      const res = await request(app)
+        .get('/api/simulations/my')
+        .set('Authorization', `Bearer ${clientToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.simulations.length).toBeGreaterThan(0);
+      expect(res.body.data.investmentSimulations.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('Flujo de estados de la solicitud', () => {
     let applicationId;
 

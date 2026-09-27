@@ -284,12 +284,19 @@ async function getInvestmentSimulationPDF(req, res, next) {
 
 async function getMyCreditSimulations(req, res, next) {
   try {
-    const simulations = await CreditSimulation.findAll({
-      where: { userId: req.user.id },
-      include: [{ model: CreditType, as: 'creditType' }],
-      order: [['createdAt', 'DESC']],
-    });
-    return successResponse(res, { simulations });
+    const [simulations, investmentSimulations] = await Promise.all([
+      CreditSimulation.findAll({
+        where: { userId: req.user.id },
+        include: [{ model: CreditType, as: 'creditType' }],
+        order: [['createdAt', 'DESC']],
+      }),
+      InvestmentSimulation.findAll({
+        where: { userId: req.user.id },
+        include: [{ model: InvestmentProduct, as: 'product' }],
+        order: [['createdAt', 'DESC']],
+      }),
+    ]);
+    return successResponse(res, { simulations, investmentSimulations });
   } catch (error) {
     next(error);
   }

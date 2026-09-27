@@ -108,8 +108,22 @@ function ageOn(birthDate, onDate = todayISO()) {
   return age;
 }
 
+/**
+ * Fecha para mostrar al usuario: dd/mm/aaaa
+ */
+function formatDisplayDate(value) {
+  if (!value) return '—';
+  // Un instante (Date) se muestra con la fecha de Ecuador, no con la fecha UTC
+  const source = value instanceof Date
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(value)
+    : value;
+  const { year, month, day } = parseISODate(source);
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+}
+
 module.exports = {
   TIME_ZONE,
+  formatDisplayDate,
   todayISO,
   parseISODate,
   toISODate,

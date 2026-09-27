@@ -20,11 +20,13 @@ const clientOnly = requireRole('CLIENTE');
 router.post('/credit-applications', clientOnly, validateCreditApplication, applicationController.createCreditApplication);
 router.get('/credit-applications/my', applicationController.getMyCreditApplications);
 router.get('/credit-applications/:id', applicationController.getCreditApplicationById);
+router.get('/credit-applications/:id/pdf', applicationController.getCreditApplicationPDF);
 
 // Solicitudes de Inversión
 router.post('/investment-applications', clientOnly, validateInvestmentApplication, applicationController.createInvestmentApplication);
 router.get('/investment-applications/my', applicationController.getMyInvestmentApplications);
 router.get('/investment-applications/:id', applicationController.getInvestmentApplicationById);
+router.get('/investment-applications/:id/pdf', applicationController.getInvestmentApplicationPDF);
 
 // Carga y consulta de Documentos
 router.post('/documents', clientOnly, upload.single('archivo'), documentController.uploadDocument);
