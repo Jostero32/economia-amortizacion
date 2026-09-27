@@ -1,6 +1,5 @@
-const path = require('path');
-const fs = require('fs');
 const { Document, CreditApplication, InvestmentApplication } = require('../models');
+const { resolveDocumentPath } = require('../services/storage/documentStorage');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -73,14 +72,27 @@ async function uploadDocument(req, res, next) {
 async function getDocumentFile(req, res, next) {
   try {
     const { id } = req.params;
-    const doc = await Document.findByPk(id);
+    const doc = await Document.findByPk(id, {
+      include: [
+        { model: CreditApplication, as: 'creditApplication', attributes: ['userId'] },
+        { model: InvestmentApplication, as: 'investmentApplication', attributes: ['userId'] },
+      ],
+    });
 
     if (!doc) {
       return errorResponse(res, 'Documento no encontrado.', 404);
     }
 
-    const filePath = path.resolve(__dirname, '../../uploads', doc.ruta);
-    if (!fs.existsSync(filePath)) {
+    // Un cliente solo puede ver los documentos de sus propias solicitudes
+    if (req.user.rol === 'CLIENTE') {
+      const ownerId = doc.creditApplication?.userId || doc.investmentApplication?.userId;
+      if (ownerId !== req.user.id) {
+        return errorResponse(res, 'No tiene permiso para ver este documento.', 403);
+      }
+    }
+
+    const filePath = resolveDocumentPath(doc.ruta);
+    if (!filePath) {
       return errorResponse(res, 'El archivo físico no se encuentra en el servidor.', 404);
     }
 

@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const path = require('path');
 
 const config = require('./config/env');
 const authRoutes = require('./routes/authRoutes');
@@ -10,6 +9,7 @@ const publicRoutes = require('./routes/publicRoutes');
 const clientRoutes = require('./routes/clientRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorMiddleware');
+const { UPLOADS_DIR } = require('./services/storage/documentStorage');
 
 const app = express();
 
@@ -41,8 +41,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Servir estáticos de uploads de forma segura
-app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
+// Los documentos de las solicitudes solo se entregan por /api/documents/:id con control de acceso
+app.use('/uploads/documentos', notFoundHandler);
+// Estáticos públicos de uploads (logotipo institucional)
+app.use('/uploads', express.static(UPLOADS_DIR, { index: false, dotfiles: 'deny' }));
 
 // Endpoint de verificación de salud
 app.get('/api/health', (req, res) => {
