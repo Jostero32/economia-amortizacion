@@ -29,7 +29,7 @@ describe('Integración: Módulo de Autenticación (/api/auth)', () => {
       nombre: 'Mateo Proaño',
       email: 'mateo@test.local',
       password: 'Password123!',
-      cedula: '1720000001',
+      cedula: '1720000015',
       telefono: '0987654321',
     };
 
@@ -65,7 +65,7 @@ describe('Integración: Módulo de Autenticación (/api/auth)', () => {
         .send({
           ...validUser,
           nombre: 'Otro Nombre',
-          cedula: '1720000002',
+          cedula: '1720000023',
         });
 
       expect(resDuplicado.status).toBe(409);
@@ -113,7 +113,7 @@ describe('Integración: Módulo de Autenticación (/api/auth)', () => {
       nombre: 'Usuario Login Test',
       email: 'login@test.local',
       password: 'MiPasswordSeguro123!',
-      cedula: '1720000005',
+      cedula: '1720000056',
     };
 
     beforeEach(async () => {
@@ -181,7 +181,7 @@ describe('Integración: Módulo de Autenticación (/api/auth)', () => {
           nombre: 'Usuario Sesion Test',
           email: 'sesion@test.local',
           password: 'PasswordValido123!',
-          cedula: '1720000008',
+          cedula: '1720000080',
         });
 
       authCookie = regRes.headers['set-cookie'];

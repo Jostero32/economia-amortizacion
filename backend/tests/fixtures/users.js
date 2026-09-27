@@ -8,7 +8,7 @@ const TEST_USERS = {
     email: 'admin@test.local',
     password: 'Admin123!',
     rol: 'ADMIN',
-    cedula: '1710000001',
+    cedula: '1710000017',
     telefono: '0990000001',
   },
   ASESOR: {
@@ -16,7 +16,7 @@ const TEST_USERS = {
     email: 'asesor@test.local',
     password: 'Asesor123!',
     rol: 'ASESOR',
-    cedula: '1710000002',
+    cedula: '1710000025',
     telefono: '0990000002',
   },
   CLIENTE: {
@@ -24,7 +24,7 @@ const TEST_USERS = {
     email: 'cliente@test.local',
     password: 'Cliente123!',
     rol: 'CLIENTE',
-    cedula: '1710000003',
+    cedula: '1710000033',
     telefono: '0990000003',
   },
   CLIENTE_DOS: {
@@ -32,7 +32,7 @@ const TEST_USERS = {
     email: 'cliente2@test.local',
     password: 'Cliente123!',
     rol: 'CLIENTE',
-    cedula: '1710000004',
+    cedula: '1710000041',
     telefono: '0990000004',
   },
 };

@@ -29,7 +29,9 @@ app.use(
       if (!origin || origin === config.FRONTEND_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
         callback(null, true);
       } else {
-        callback(new Error(`Acceso CORS no permitido para el origen: ${origin}`));
+        const corsError = new Error('Origen no permitido para acceder a la API.');
+        corsError.statusCode = 403;
+        callback(corsError);
       }
     },
     credentials: true,

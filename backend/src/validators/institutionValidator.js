@@ -1,13 +1,5 @@
-const { body, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
-
-function returnValidationErrors(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(res, 'Datos institucionales inválidos.', 400, errors.array());
-  }
-  return next();
-}
+const { body } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
 
 const validateInstitution = [
   body('nombre').trim().notEmpty().withMessage('El nombre es obligatorio.').isLength({ max: 150 }),
@@ -23,7 +15,7 @@ const validateInstitution = [
   body('logo').optional({ checkFalsy: true }).trim().isLength({ max: 255 }),
   body('colorPrincipal').matches(/^#[0-9a-fA-F]{6}$/).withMessage('El color principal debe usar formato hexadecimal.'),
   body('colorSecundario').matches(/^#[0-9a-fA-F]{6}$/).withMessage('El color secundario debe usar formato hexadecimal.'),
-  returnValidationErrors,
+  validateRequest,
 ];
 
 module.exports = { validateInstitution };

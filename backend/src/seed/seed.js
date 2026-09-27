@@ -45,7 +45,7 @@ async function seedDatabase() {
       email: 'admin@finanecuador.local',
       password: 'Admin123!',
       rol: 'ADMIN',
-      cedula: '1710000001',
+      cedula: '1710000017',
       telefono: '0991112233',
     },
     {
@@ -53,7 +53,7 @@ async function seedDatabase() {
       email: 'asesor@finanecuador.local',
       password: 'Asesor123!',
       rol: 'ASESOR',
-      cedula: '1710000002',
+      cedula: '1710000025',
       telefono: '0992223344',
     },
     {
@@ -61,7 +61,7 @@ async function seedDatabase() {
       email: 'cliente@finanecuador.local',
       password: 'Cliente123!',
       rol: 'CLIENTE',
-      cedula: '1710000003',
+      cedula: '1710000033',
       telefono: '0993334455',
     },
   ];
