@@ -8,6 +8,7 @@ const { optionalAuth } = require('../middleware/authMiddleware');
 const {
   validateCreditSimulation,
   validateCreditComparison,
+  validateCreditPrepayment,
   validateInvestmentSimulation,
 } = require('../validators/simulationValidator');
 
@@ -24,6 +25,7 @@ router.post('/simulations/credit', optionalAuth, validateCreditSimulation, simul
 router.post('/simulations/credits/compare', validateCreditComparison, simulationController.compareCreditSystems);
 router.get('/simulations/credits/:id', simulationController.getCreditSimulationById);
 router.get('/simulations/credits/:id/pdf', simulationController.getCreditSimulationPDF);
+router.post('/simulations/credits/:id/prepayment', validateCreditPrepayment, simulationController.simulateCreditPrepayment);
 
 // Catálogo de Inversiones (Público)
 router.get('/investment-products', investmentProductController.getInvestmentProducts);

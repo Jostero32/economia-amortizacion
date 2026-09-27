@@ -323,6 +323,46 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
     });
   });
 
+  describe('Abono extraordinario', () => {
+    test('POST /api/simulations/credits/:id/prepayment compara el cronograma sin modificar la simulación', async () => {
+      const sim = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 10000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+      });
+      const id = sim.body.data.simulation.id;
+
+      const res = await request(app)
+        .post(`/api/simulations/credits/${id}/prepayment`)
+        .send({ despuesDeCuota: 6, monto: 3000, opcion: 'REDUCIR_PLAZO' });
+
+      expect(res.status).toBe(200);
+      const { prepayment } = res.body.data;
+      expect(prepayment.nuevo.cuotas).toBeLessThan(18);
+      expect(prepayment.ahorroIntereses).toBeGreaterThan(0);
+      // El desgravamen se recalcula sobre el nuevo saldo
+      expect(prepayment.nuevo.rows[0].cargos).toBeGreaterThan(0);
+
+      const stored = await request(app).get(`/api/simulations/credits/${id}`);
+      expect(stored.body.data.simulation.rows).toHaveLength(24);
+    });
+
+    test('rechaza un abono mayor al saldo con un mensaje claro', async () => {
+      const sim = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 5000,
+        termMonths: 12,
+        amortizationSystem: 'ALEMAN',
+      });
+      const res = await request(app)
+        .post(`/api/simulations/credits/${sim.body.data.simulation.id}/prepayment`)
+        .send({ despuesDeCuota: 3, monto: 9000, opcion: 'REDUCIR_CUOTA' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no puede superar el saldo/);
+    });
+  });
+
   describe('Comparación de sistemas sin guardar simulaciones', () => {
     test('POST /api/simulations/credits/compare devuelve francés y alemán y no crea registros', async () => {
       const { CreditSimulation } = require('../../src/models');

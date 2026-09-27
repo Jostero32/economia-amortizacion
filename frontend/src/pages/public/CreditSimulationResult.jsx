@@ -7,6 +7,7 @@ import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
 import CreditSummary from '../../components/credit/CreditSummary';
 import AmortizationTable from '../../components/credit/AmortizationTable';
+import PrepaymentSimulator from '../../components/credit/PrepaymentSimulator';
 
 export default function CreditSimulationResult() {
   const { id } = useParams();
@@ -110,6 +111,8 @@ export default function CreditSimulationResult() {
           <AmortizationTable rows={rows} simulation={simulation} />
         </div>
       </div>
+
+      <PrepaymentSimulator simulation={simulation} rows={rows} />
     </div>
   );
 }

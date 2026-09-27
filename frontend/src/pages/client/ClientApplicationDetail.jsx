@@ -8,6 +8,7 @@ import CreditSummary from '../../components/credit/CreditSummary';
 import AmortizationTable from '../../components/credit/AmortizationTable';
 import ApplicationStatusBanner from '../../components/application/ApplicationStatusBanner';
 import DocumentChecklist from '../../components/application/DocumentChecklist';
+import PrepaymentSimulator from '../../components/credit/PrepaymentSimulator';
 import { formatDateTime, formatMoney } from '../../utils/format';
 
 export default function ClientApplicationDetail() {
@@ -108,6 +109,8 @@ export default function ClientApplicationDetail() {
               {showTable && <AmortizationTable rows={rows} simulation={simulation} />}
             </div>
           )}
+
+          {simulation && <PrepaymentSimulator simulation={simulation} rows={rows} />}
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6">
             <h2 className="text-[16px] font-bold text-primary mb-3">Datos del solicitante</h2>

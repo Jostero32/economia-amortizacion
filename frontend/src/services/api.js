@@ -90,6 +90,7 @@ export const publicService = {
   getCreditProductById: (id) => api.get(`/credit-products/${id}`),
   simulateCredit: (data) => api.post('/simulations/credits', data),
   compareCreditSystems: (data) => api.post('/simulations/credits/compare', data),
+  simulateCreditPrepayment: (id, data) => api.post(`/simulations/credits/${id}/prepayment`, data),
   getCreditSimulation: (id) => api.get(`/simulations/credits/${id}`),
   getCreditSimulationPdfUrl: (id) => `${API_BASE_URL}/simulations/credits/${id}/pdf`,
   downloadCreditSimulationPdf: (id) =>

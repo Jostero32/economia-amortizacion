@@ -106,8 +106,31 @@ const validateInvestmentSimulation = [
   validateRequest,
 ];
 
+const validateCreditPrepayment = [
+  body('despuesDeCuota')
+    .notEmpty()
+    .withMessage('Elige después de qué cuota harás el abono.')
+    .bail()
+    .isInt({ min: 0 })
+    .withMessage('La cuota debe ser un número entero.'),
+  body('monto')
+    .notEmpty()
+    .withMessage('Ingresa el valor del abono.')
+    .bail()
+    .isDecimal(AMOUNT_FORMAT)
+    .withMessage('El abono debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El abono debe ser mayor a $0.'),
+  body('opcion')
+    .isIn(['REDUCIR_PLAZO', 'REDUCIR_CUOTA'])
+    .withMessage('Elige si el abono reduce el plazo o la cuota.'),
+  validateRequest,
+];
+
 module.exports = {
   MAX_START_DAYS,
+  validateCreditPrepayment,
   validateCreditSimulation,
   validateCreditComparison,
   validateInvestmentSimulation,

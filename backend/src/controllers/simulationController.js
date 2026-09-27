@@ -3,12 +3,16 @@ const {
   CreditSegment,
   CreditSimulation,
   AmortizationRow,
+  Charge,
   InvestmentProduct,
   InvestmentRate,
   InvestmentSimulation,
   Institution,
 } = require('../models');
 const { quoteCredit, productSummary, saveCreditSimulation } = require('../services/credit/creditQuote');
+const { simulatePrepayment } = require('../services/amortization/prepayment');
+const { getFrequency, effectiveToPeriodicRate } = require('../services/amortization/frequencies');
+const { isPeriodicCharge } = require('../services/amortization/charges');
 const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const {
   generateCreditSimulationPDF,
@@ -105,6 +109,67 @@ async function getCreditSimulationById(req, res, next) {
     }
 
     return successResponse(res, { simulation });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Cargos periódicos de una simulación guardada, reconstruidos desde su desglose.
+ * Para cargos fijos de simulaciones antiguas (sin valor unitario) se usa el valor configurado.
+ */
+async function periodicChargesOf(simulation) {
+  const periodic = (simulation.desgloseCargos || []).filter((cargo) => (cargo.momento
+    ? cargo.momento === 'CUOTA'
+    : isPeriodicCharge(cargo)));
+
+  return Promise.all(periodic.map(async (cargo) => {
+    let valor = cargo.valorUnitario;
+    if (cargo.tipo === 'VALOR_FIJO' && (valor === null || valor === undefined)) {
+      const charge = await Charge.findByPk(cargo.id);
+      valor = charge ? Number(charge.valor) : 0;
+    }
+    return { ...cargo, valor };
+  }));
+}
+
+/**
+ * Simula un abono extraordinario sobre una simulación guardada, sin modificarla (PÚBLICA)
+ */
+async function simulateCreditPrepayment(req, res, next) {
+  try {
+    const simulation = await CreditSimulation.findByPk(req.params.id, {
+      include: [{ model: AmortizationRow, as: 'rows' }],
+      order: [[{ model: AmortizationRow, as: 'rows' }, 'numeroCuota', 'ASC']],
+    });
+    if (!simulation) {
+      return errorResponse(res, 'Simulación de crédito no encontrada.', 404);
+    }
+
+    const frecuencia = getFrequency(simulation.frecuenciaPago || 'MENSUAL');
+    const periodRate = simulation.tasaPeriodica != null
+      ? Number(simulation.tasaPeriodica)
+      : effectiveToPeriodicRate(Number(simulation.tasaAnual), frecuencia.dias);
+
+    let result;
+    try {
+      result = simulatePrepayment({
+        rows: simulation.rows.map((row) => row.get({ plain: true })),
+        system: simulation.sistemaAmortizacion,
+        principal: Number(simulation.monto),
+        periodRate,
+        monthsPerPeriod: frecuencia.meses,
+        startDate: simulation.fechaInicio,
+        charges: await periodicChargesOf(simulation),
+        afterInstallment: Number(req.body.despuesDeCuota),
+        amount: Number(req.body.monto),
+        option: req.body.opcion,
+      });
+    } catch (calculationError) {
+      return errorResponse(res, calculationError.message, 400);
+    }
+
+    return successResponse(res, { prepayment: result });
   } catch (error) {
     next(error);
   }
@@ -314,6 +379,7 @@ module.exports = {
   compareCreditSystems,
   getCreditSimulationById,
   getCreditSimulationPDF,
+  simulateCreditPrepayment,
   simulateInvestment,
   getInvestmentSimulationById,
   getInvestmentSimulationPDF,

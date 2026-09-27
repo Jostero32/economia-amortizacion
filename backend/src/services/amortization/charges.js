@@ -77,6 +77,7 @@ function summarizeCharge(charge, momento, valor) {
     aplicacion: charge.aplicacion,
     baseCalculo: charge.baseCalculo,
     porcentaje: charge.porcentaje !== undefined ? Number(charge.porcentaje) : null,
+    valorUnitario: charge.valor !== undefined ? Number(charge.valor) : null,
     momento,
     valor,
   };

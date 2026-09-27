@@ -523,6 +523,9 @@ export default function CreditSimulator() {
                 <button type="button" className="text-secondary font-medium hover:underline" onClick={handleCompare}>
                   Comparar cuota fija y decreciente
                 </button>
+                <Link to={`/creditos/simulador/${simulation.id}`} className="text-secondary font-medium hover:underline">
+                  Simular un abono extraordinario
+                </Link>
               </div>
             </div>
           )}
