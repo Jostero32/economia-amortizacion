@@ -10,9 +10,8 @@
  * n = Número total de cuotas (plazo en meses)
  */
 
-function roundToTwo(num) {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-}
+const { roundToTwo } = require('../../utils/money');
+const { addMonthsClamped, todayISO } = require('../../utils/dates');
 
 /**
  * Calcula la tabla de amortización bajo el sistema Francés
@@ -48,13 +47,16 @@ function calculateFrenchAmortization({ principal, monthlyRate, termMonths, start
     cuotaConstante = P * ((i * factor) / (factor - 1));
   }
 
+  // La cuota que se publica al cliente es la cuota redondeada a centavos
+  const cuotaFija = roundToTwo(cuotaConstante);
+
   const rows = [];
   let saldoInicial = P;
   let totalCapital = 0;
   let totalIntereses = 0;
   let totalCargos = 0;
 
-  const baseDate = startDate ? new Date(startDate) : new Date();
+  const fechaBase = startDate || todayISO();
 
   // Desglose de cargos
   const desgloseCargos = [];
@@ -80,10 +82,8 @@ function calculateFrenchAmortization({ principal, monthlyRate, termMonths, start
   });
 
   for (let k = 1; k <= n; k++) {
-    // Fecha de pago de la cuota: mes a mes
-    const fechaPago = new Date(baseDate);
-    fechaPago.setMonth(fechaPago.getMonth() + k);
-    const fechaPagoStr = fechaPago.toISOString().split('T')[0];
+    // Fecha de pago de la cuota: mismo día cada mes (o el último día si el mes es más corto)
+    const fechaPagoStr = addMonthsClamped(fechaBase, k);
 
     // Interés del período sobre saldo inicial
     const interes = roundToTwo(saldoInicial * i);
@@ -98,7 +98,7 @@ function calculateFrenchAmortization({ principal, monthlyRate, termMonths, start
       cuota = roundToTwo(capital + interes);
       saldoFinal = 0.00;
     } else {
-      capital = roundToTwo(cuotaConstante - interes);
+      capital = roundToTwo(cuotaFija - interes);
       // Garantizar que no exceda el saldo si hay desviaciones por centavos
       if (capital > saldoInicial) {
         capital = saldoInicial;

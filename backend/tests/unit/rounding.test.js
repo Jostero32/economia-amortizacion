@@ -19,6 +19,13 @@ describe('Control de Redondeo y Precisión Monetaria (2 Decimales / Centavos)', 
       expect(roundToTwo(0.000001)).toBe(0.00);
     });
 
+    test('redondea hacia arriba la mitad de centavo también en montos grandes', () => {
+      // 10000.005 se representa como 10000.00499999... en binario
+      expect(roundToTwo(10000.005)).toBe(10000.01);
+      expect(roundToTwo(12345.675)).toBe(12345.68);
+      expect(roundToTwo(-2.345)).toBe(-2.35);
+    });
+
     test('mantiene la precisión en sumas con centavos fraccionarios', () => {
       const a = 0.1;
       const b = 0.2;

@@ -1,5 +1,6 @@
 const { calculateFrenchAmortization } = require('./french');
 const { calculateGermanAmortization } = require('./german');
+const { todayISO, toISODate } = require('../../utils/dates');
 
 /**
  * Convierte una Tasa Efectiva Anual (TEA) a Tasa Periódica Mensual
@@ -7,15 +8,44 @@ const { calculateGermanAmortization } = require('./german');
  *
  * iMensual = (1 + iAnual)^(30 / 360) - 1
  *
- * @param {number} annualRate - Tasa en porcentaje (ej: 15.74) o decimal (ej: 0.1574)
+ * @param {number} annualRate - Tasa en porcentaje (ej: 15.74). Siempre se interpreta como
+ *   porcentaje: 0.9 significa 0.9 % anual, no 90 %.
  * @returns {number} Tasa mensual periódica con precisión de punto flotante
  */
 function annualEffectiveToMonthlyRate(annualRate) {
-  const iAnual = annualRate > 1 ? Number(annualRate) / 100 : Number(annualRate);
+  const iAnual = Number(annualRate) / 100;
   if (iAnual < 0) {
     throw new Error('La tasa no puede ser negativa.');
   }
   return Math.pow(1 + iAnual, 30 / 360) - 1;
+}
+
+/**
+ * Tasa nominal anual equivalente a una TEA para pagos cada `days` días.
+ * Instructivo de Tasas de Interés del BCE, Anexo 1:
+ *
+ * TEA = [1 + i·n/360]^(360/n) - 1  =>  i = (360/n)·[(1 + TEA)^(n/360) - 1]
+ *
+ * @param {number} effectiveRate - TEA en porcentaje
+ * @param {number} [days=30] - Días del período de pago (30 = mensual)
+ * @returns {number} Tasa nominal anual en porcentaje
+ */
+function effectiveToNominalRate(effectiveRate, days = 30) {
+  const tea = Number(effectiveRate) / 100;
+  return (360 / days) * (Math.pow(1 + tea, days / 360) - 1) * 100;
+}
+
+/**
+ * TEA correspondiente a una tasa nominal anual con pagos cada `days` días
+ * (Instructivo de Tasas de Interés del BCE, Anexo 1).
+ *
+ * @param {number} nominalRate - Tasa nominal anual en porcentaje
+ * @param {number} [days=30] - Días del período de pago (30 = mensual)
+ * @returns {number} TEA en porcentaje
+ */
+function nominalToEffectiveRate(nominalRate, days = 30) {
+  const i = Number(nominalRate) / 100;
+  return (Math.pow(1 + (i * days) / 360, 360 / days) - 1) * 100;
 }
 
 /**
@@ -34,9 +64,10 @@ function calculateAmortization({
   termMonths,
   annualRate,
   system = 'FRANCES',
-  startDate = new Date().toISOString().split('T')[0],
+  startDate,
   charges = [],
 }) {
+  const fechaInicio = startDate ? toISODate(startDate) : todayISO();
   const principal = Number(amount);
   const n = parseInt(termMonths, 10);
   const tasaAnual = Number(annualRate);
@@ -65,7 +96,7 @@ function calculateAmortization({
       principal,
       monthlyRate,
       termMonths: n,
-      startDate,
+      startDate: fechaInicio,
       charges,
     });
   } else {
@@ -73,7 +104,7 @@ function calculateAmortization({
       principal,
       monthlyRate,
       termMonths: n,
-      startDate,
+      startDate: fechaInicio,
       charges,
     });
   }
@@ -82,11 +113,13 @@ function calculateAmortization({
     ...simulationResult,
     tasaAnual,
     tasaMensual: monthlyRate,
-    fechaInicio: startDate,
+    fechaInicio,
   };
 }
 
 module.exports = {
   annualEffectiveToMonthlyRate,
+  effectiveToNominalRate,
+  nominalToEffectiveRate,
   calculateAmortization,
 };

@@ -174,4 +174,19 @@ describe('Motor Financiero - Sistema Francés (Amortización a Cuota Constante)'
       }).toThrow('La tasa de interés no puede ser negativa.');
     });
   });
+
+  test('las fechas de pago conservan el día y usan el último día en meses más cortos', () => {
+    const res = calculateFrenchAmortization({
+      principal: 10000,
+      monthlyRate: 0.01,
+      termMonths: 4,
+      startDate: '2026-01-31',
+    });
+    expect(res.rows.map((row) => row.fechaPago)).toEqual([
+      '2026-02-28',
+      '2026-03-31',
+      '2026-04-30',
+      '2026-05-31',
+    ]);
+  });
 });

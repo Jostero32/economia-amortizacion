@@ -13,9 +13,8 @@
  * - Cuota total decreciente mes a mes
  */
 
-function roundToTwo(num) {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-}
+const { roundToTwo } = require('../../utils/money');
+const { addMonthsClamped, todayISO } = require('../../utils/dates');
 
 /**
  * Calcula la tabla de amortización bajo el sistema Alemán
@@ -51,7 +50,7 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
   let totalIntereses = 0;
   let totalCargos = 0;
 
-  const baseDate = startDate ? new Date(startDate) : new Date();
+  const fechaBase = startDate || todayISO();
 
   // Desglose de cargos
   const desgloseCargos = [];
@@ -77,9 +76,8 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
   });
 
   for (let k = 1; k <= n; k++) {
-    const fechaPago = new Date(baseDate);
-    fechaPago.setMonth(fechaPago.getMonth() + k);
-    const fechaPagoStr = fechaPago.toISOString().split('T')[0];
+    // Mismo día cada mes (o el último día si el mes es más corto)
+    const fechaPagoStr = addMonthsClamped(fechaBase, k);
 
     const interes = roundToTwo(saldoInicial * i);
 
