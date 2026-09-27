@@ -274,20 +274,59 @@ async function deleteCreditProduct(req, res, next) {
 }
 
 // 3. Cobros Adicionales (Charges)
+const CHARGE_FIELDS = [
+  'nombre',
+  'categoria',
+  'tipo',
+  'valor',
+  'porcentaje',
+  'baseCalculo',
+  'aplicacion',
+  'anualizarSiPlazoMenorAnio',
+  'obligatorio',
+  'creditTypeId',
+  'descripcion',
+  'activo',
+];
+
+function pickChargeFields(source) {
+  const data = {};
+  CHARGE_FIELDS.forEach((field) => {
+    if (source[field] !== undefined) data[field] = source[field];
+  });
+  if (data.creditTypeId === '' || data.creditTypeId === 0) data.creditTypeId = null;
+  // Solo un porcentaje sobre el monto puede prorratearse por plazo (regla de SOLCA)
+  if (data.tipo === 'VALOR_FIJO') data.anualizarSiPlazoMenorAnio = false;
+  return data;
+}
+
+async function getCharges(req, res, next) {
+  try {
+    const charges = await Charge.findAll({
+      include: [{ model: CreditType, as: 'creditType', attributes: ['id', 'nombre'] }],
+      order: [['activo', 'DESC'], ['id', 'ASC']],
+    });
+    return successResponse(res, { charges });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function createCharge(req, res, next) {
   try {
-    const { nombre, tipo, valor, porcentaje, baseCalculo, aplicacion, obligatorio, creditTypeId, descripcion } = req.body;
+    const data = pickChargeFields(req.body);
+
+    if (data.creditTypeId) {
+      const product = await CreditType.findByPk(data.creditTypeId);
+      if (!product) return errorResponse(res, 'El producto de crédito indicado no existe.', 404);
+    }
 
     const charge = await Charge.create({
-      nombre,
-      tipo: tipo || 'PORCENTAJE',
-      valor: valor || 0,
-      porcentaje: porcentaje || 0,
-      baseCalculo: baseCalculo || 'MONTO_OPERACION',
-      aplicacion: aplicacion || 'UNA_VEZ',
-      obligatorio: obligatorio !== undefined ? obligatorio : false,
-      creditTypeId: creditTypeId || null,
-      descripcion: descripcion || null,
+      baseCalculo: 'MONTO_OPERACION',
+      obligatorio: false,
+      valor: 0,
+      porcentaje: 0,
+      ...data,
       activo: true,
     });
 
@@ -296,7 +335,7 @@ async function createCharge(req, res, next) {
       accion: 'CREAR_COBRO',
       entidad: 'Charge',
       entidadId: charge.id,
-      detalles: req.body,
+      detalles: data,
     });
 
     return successResponse(res, { charge }, 201, 'Cobro adicional registrado con éxito.');
@@ -311,14 +350,21 @@ async function updateCharge(req, res, next) {
     const charge = await Charge.findByPk(id);
     if (!charge) return errorResponse(res, 'Cobro adicional no encontrado.', 404);
 
-    await charge.update(req.body);
+    const data = pickChargeFields(req.body);
+    if (data.creditTypeId) {
+      const product = await CreditType.findByPk(data.creditTypeId);
+      if (!product) return errorResponse(res, 'El producto de crédito indicado no existe.', 404);
+    }
+
+    const anterior = charge.get({ plain: true });
+    await charge.update(data);
 
     await logAudit({
       req,
       accion: 'EDITAR_COBRO',
       entidad: 'Charge',
       entidadId: charge.id,
-      detalles: req.body,
+      detalles: { anterior, cambios: data },
     });
 
     return successResponse(res, { charge }, 200, 'Cobro adicional actualizado correctamente.');
@@ -335,6 +381,14 @@ async function deleteCharge(req, res, next) {
 
     charge.activo = false;
     await charge.save();
+
+    await logAudit({
+      req,
+      accion: 'EDITAR_COBRO',
+      entidad: 'Charge',
+      entidadId: charge.id,
+      detalles: { accion: 'Desactivación del cobro', nombre: charge.nombre },
+    });
 
     return successResponse(res, null, 200, 'Cobro desactivado correctamente.');
   } catch (error) {
@@ -564,6 +618,7 @@ module.exports = {
   createCreditProduct,
   updateCreditProduct,
   deleteCreditProduct,
+  getCharges,
   createCharge,
   updateCharge,
   deleteCharge,

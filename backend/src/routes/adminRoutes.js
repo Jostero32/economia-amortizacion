@@ -5,6 +5,7 @@ const { requireRole } = require('../middleware/roleMiddleware');
 const { imageUpload } = require('../middleware/uploadMiddleware');
 const { validateInstitution } = require('../validators/institutionValidator');
 const { validateUserAccessUpdate } = require('../validators/userValidator');
+const { validateChargeCreate, validateChargeUpdate } = require('../validators/chargeValidator');
 
 const adminController = require('../controllers/adminController');
 const applicationController = require('../controllers/applicationController');
@@ -58,8 +59,9 @@ router.post('/rates', adminAuth, adminController.createRate);
 router.put('/rates/:id', adminAuth, adminController.updateRate);
 
 // Cobros Adicionales (SOLCA, Desgravamen, etc.)
-router.post('/charges', adminAuth, adminController.createCharge);
-router.put('/charges/:id', adminAuth, adminController.updateCharge);
+router.get('/charges', adminAuth, adminController.getCharges);
+router.post('/charges', adminAuth, validateChargeCreate, adminController.createCharge);
+router.put('/charges/:id', adminAuth, validateChargeUpdate, adminController.updateCharge);
 router.delete('/charges/:id', adminAuth, adminController.deleteCharge);
 
 // Productos de Inversión (Depósito a Plazo Fijo)

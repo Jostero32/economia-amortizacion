@@ -273,21 +273,71 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
   // SECCIÓN 22: CRUD DE CARGOS Y PRODUCTOS DE INVERSIÓN
   // =========================================================================
   describe('Gestión Administrativa de Cobros y Productos de Inversión', () => {
-    test('ADMIN puede crear un cargo administrativo', async () => {
+    test('ADMIN puede crear un gasto a terceros que se descuenta al desembolso', async () => {
       const res = await request(app)
         .post('/api/admin/charges')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          nombre: 'Comisión Test Auditoría',
+          nombre: 'Avalúo Test Auditoría',
+          categoria: 'GASTO_TERCEROS',
           tipo: 'VALOR_FIJO',
           valor: 15.00,
           aplicacion: 'UNA_VEZ',
-          esObligatorio: false,
+          obligatorio: false,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.data.charge.id).toBeDefined();
+      expect(res.body.data.charge.categoria).toBe('GASTO_TERCEROS');
+    });
+
+    test('rechaza cobros sin categoría válida o con porcentaje fuera de rango, con error por campo', async () => {
+      const res = await request(app)
+        .post('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          nombre: 'Comisión de apertura',
+          categoria: 'COMISION',
+          tipo: 'PORCENTAJE',
+          porcentaje: 150,
+          aplicacion: 'UNA_VEZ',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.categoria).toBeDefined();
+      expect(res.body.errors.porcentaje).toBeDefined();
+      expect(typeof res.body.message).toBe('string');
+    });
+
+    test('ADMIN lista todos los cobros y puede desactivarlos y reactivarlos', async () => {
+      const list = await request(app)
+        .get('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(list.status).toBe(200);
+      const solca = list.body.data.charges.find((c) => c.nombre === 'Contribución SOLCA');
+      expect(solca.categoria).toBe('IMPUESTO');
+      expect(solca.anualizarSiPlazoMenorAnio).toBe(true);
+
+      const avaluo = list.body.data.charges.find((c) => c.nombre === 'Avalúo Test Auditoría');
+      const off = await request(app)
+        .delete(`/api/admin/charges/${avaluo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(off.status).toBe(200);
+
+      const on = await request(app)
+        .put(`/api/admin/charges/${avaluo.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ activo: true });
+      expect(on.status).toBe(200);
+      expect(on.body.data.charge.activo).toBe(true);
+    });
+
+    test('ASESOR no puede ver ni modificar la configuración de cobros', async () => {
+      const res = await request(app)
+        .get('/api/admin/charges')
+        .set('Authorization', `Bearer ${advisorToken}`);
+      expect(res.status).toBe(403);
     });
 
     test('ADMIN puede registrar un nuevo producto de inversión DPF', async () => {

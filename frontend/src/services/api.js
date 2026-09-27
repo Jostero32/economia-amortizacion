@@ -147,6 +147,7 @@ export const adminService = {
   createRate: (data) => api.post('/admin/rates', data),
   updateRate: (id, data) => api.put(`/admin/rates/${id}`, data),
 
+  getCharges: () => api.get('/admin/charges'),
   createCharge: (data) => api.post('/admin/charges', data),
   updateCharge: (id, data) => api.put(`/admin/charges/${id}`, data),
   deleteCharge: (id) => api.delete(`/admin/charges/${id}`),
