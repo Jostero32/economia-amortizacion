@@ -1,6 +1,14 @@
 const { body, validationResult } = require('express-validator');
 const { errorResponse } = require('../utils/apiResponse');
 
+function isPastDate(value) {
+  if (!value) return true;
+  const inputDate = new Date(`${value}T00:00:00Z`);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return inputDate < today;
+}
+
 function validateResults(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -50,6 +58,13 @@ const validateCreditApplication = [
     .withMessage('La cédula de identidad es obligatoria.')
     .isLength({ min: 10, max: 10 })
     .withMessage('La cédula ecuatoriana debe tener 10 dígitos.'),
+  body('fechaNacimiento')
+    .optional()
+    .isISO8601({ strict: true, strictSeparator: true })
+    .withMessage('La fecha de nacimiento debe tener formato válido YYYY-MM-DD.')
+    .bail()
+    .custom(isPastDate)
+    .withMessage('La fecha de nacimiento debe ser una fecha pasada.'),
   body('direccion')
     .trim()
     .notEmpty()

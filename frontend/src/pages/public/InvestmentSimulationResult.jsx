@@ -17,6 +17,7 @@ export default function InvestmentSimulationResult() {
 
   const formatUSD = (val) =>
     new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const simulationGain = Number(simulation?.interesGanado ?? simulation?.rendimiento ?? 0);
 
   useEffect(() => {
     if (!simulation) {
@@ -119,7 +120,7 @@ export default function InvestmentSimulationResult() {
         <div className="bg-blue-50/60 p-6 rounded-xl border border-blue-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] space-y-1">
           <span className="text-[13px] text-secondary font-medium block">Ganancia neta estimada</span>
           <span className="text-[26px] font-bold text-primary font-numeric-data block">
-            +{formatUSD(simulation.rendimiento || simulation.interesGanado)}
+            +{formatUSD(simulationGain)}
           </span>
           <span className="text-[12px] text-gray-500 block">Al término de {simulation.plazoDias} días</span>
         </div>

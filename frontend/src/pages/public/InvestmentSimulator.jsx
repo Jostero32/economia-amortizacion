@@ -26,12 +26,14 @@ export default function InvestmentSimulator() {
 
   // Simulation Result State
   const [simulation, setSimulation] = useState(null);
+  const todayISO = new Date().toISOString().split('T')[0];
 
   const selectedProduct =
     products.find((p) => String(p.id) === String(selectedProductId)) || products[0];
 
   const formatUSD = (val) =>
     new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const simulationGain = Number(simulation?.interesGanado ?? simulation?.rendimiento ?? 0);
 
   // 1. Load investment products
   useEffect(() => {
@@ -105,7 +107,7 @@ export default function InvestmentSimulator() {
 
   const isExceedingCosede = amount > 32000;
   const isSriExempt = termDays >= 180;
-  const monthlyAvgYield = simulation ? Number(simulation.rendimiento) / (termDays / 30) : 0;
+  const monthlyAvgYield = simulation && termDays > 0 ? simulationGain / (termDays / 30) : 0;
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-8 md:py-10 space-y-8">
@@ -305,6 +307,7 @@ export default function InvestmentSimulator() {
               <input
                 id="inv-start-date"
                 type="date"
+                min={todayISO}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full h-10 px-3 bg-gray-50/50 text-primary text-[13px] rounded-lg border border-gray-200 focus:outline-none focus:bg-white focus:border-secondary transition-colors"
@@ -337,7 +340,7 @@ export default function InvestmentSimulator() {
                   Ganancia neta estimada
                 </span>
                 <div className="text-[38px] sm:text-[44px] font-bold tracking-tight text-emerald-300 mt-1 font-numeric-hero">
-                  +{formatUSD(simulation?.rendimiento || 0)}
+                  +{formatUSD(simulationGain)}
                 </div>
                 <p className="text-[13px] text-blue-200/80 mt-1">
                   Rendimiento mensual promedio: {formatUSD(monthlyAvgYield)}/mes
