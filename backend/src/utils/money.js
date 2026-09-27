@@ -25,6 +25,32 @@ function roundToTwo(num) {
   return value < 0 ? -rounded : rounded;
 }
 
+const moneyFormatter = new Intl.NumberFormat('es-EC', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Monto en dólares con la convención es-EC ($1.234,56), igual que el frontend
+ */
+function formatMoney(value) {
+  const number = Number(value);
+  return moneyFormatter.format(Number.isFinite(number) ? number : 0);
+}
+
+/**
+ * Porcentaje con 2 decimales y coma decimal (15,74 %)
+ */
+function formatPercent(value, decimals = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${number.toLocaleString('es-EC', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+}
+
 module.exports = {
   roundToTwo,
+  formatMoney,
+  formatPercent,
 };

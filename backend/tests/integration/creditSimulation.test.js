@@ -9,6 +9,7 @@
 
 const request = require('supertest');
 const app = require('../../src/app');
+const { todayISO, addDays } = require('../../src/utils/dates');
 const { CreditType } = require('../../src/models');
 const { initTestDatabase, cleanDatabase, seedCompleteData, closeTestDatabase } = require('../helpers/dbSetup');
 const { expectCloseToMoney } = require('../helpers/assertions');
@@ -215,7 +216,7 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
     });
 
     test('rechaza simulación con fecha de inicio en el pasado (Código 400)', async () => {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const yesterday = addDays(todayISO(), -1);
       const res = await request(app)
         .post('/api/simulations/credits')
         .send({
@@ -228,7 +229,58 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toMatch(/fecha de inicio debe ser hoy o una fecha futura/i);
+      expect(res.body.message).toMatch(/fecha de desembolso no puede ser anterior a hoy/i);
+      expect(res.body.errors.startDate).toBeDefined();
+    });
+
+    test('rechaza una fecha de desembolso a más de 90 días', async () => {
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: creditoConsumo.id,
+          amount: 5000,
+          termMonths: 12,
+          amortizationSystem: 'FRANCES',
+          startDate: addDays(todayISO(), 91),
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.startDate).toMatch(/90 días/);
+    });
+
+    test('rechaza montos con más de 2 decimales con un mensaje simple por campo', async () => {
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: creditoConsumo.id,
+          amount: '5000.123',
+          termMonths: 12,
+          amortizationSystem: 'FRANCES',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('El monto debe ser un número con máximo 2 decimales.');
+      expect(res.body.errors.amount).toBeDefined();
+    });
+  });
+
+  describe('Comparación de sistemas sin guardar simulaciones', () => {
+    test('POST /api/simulations/credits/compare devuelve francés y alemán y no crea registros', async () => {
+      const { CreditSimulation } = require('../../src/models');
+      const before = await CreditSimulation.count();
+
+      const res = await request(app)
+        .post('/api/simulations/credits/compare')
+        .send({ creditTypeId: creditoConsumo.id, amount: 10000, termMonths: 24 });
+
+      expect(res.status).toBe(200);
+      const { frances, aleman } = res.body.data;
+      // La cuota francesa es constante; la alemana empieza más alta y termina más baja
+      expect(aleman.primeraCuota).toBeGreaterThan(frances.primeraCuota);
+      expect(aleman.ultimaCuota).toBeLessThan(frances.ultimaCuota);
+      // El sistema alemán amortiza más rápido y paga menos intereses
+      expect(aleman.totalIntereses).toBeLessThan(frances.totalIntereses);
+      expect(await CreditSimulation.count()).toBe(before);
     });
   });
 

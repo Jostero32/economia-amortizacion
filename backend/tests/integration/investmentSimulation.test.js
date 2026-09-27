@@ -8,6 +8,7 @@
 
 const request = require('supertest');
 const app = require('../../src/app');
+const { todayISO, addDays } = require('../../src/utils/dates');
 const { InvestmentProduct } = require('../../src/models');
 const { initTestDatabase, seedCompleteData, closeTestDatabase } = require('../helpers/dbSetup');
 
@@ -91,7 +92,7 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
   });
 
   test('rechaza simulación con fecha de inicio en el pasado (Código 400)', async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const yesterday = addDays(todayISO(), -1);
     const res = await request(app)
       .post('/api/simulations/investments')
       .send({
@@ -103,7 +104,8 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/fecha de inicio debe ser hoy o una fecha futura/i);
+    expect(res.body.message).toMatch(/fecha de apertura no puede ser anterior a hoy/i);
+      expect(res.body.errors.startDate).toBeDefined();
   });
 
   test('GET /api/simulations/investments/:id recupera los datos de la inversión calculada', async () => {

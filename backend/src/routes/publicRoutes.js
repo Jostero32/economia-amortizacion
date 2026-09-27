@@ -7,6 +7,7 @@ const simulationController = require('../controllers/simulationController');
 const { optionalAuth } = require('../middleware/authMiddleware');
 const {
   validateCreditSimulation,
+  validateCreditComparison,
   validateInvestmentSimulation,
 } = require('../validators/simulationValidator');
 
@@ -20,6 +21,7 @@ router.get('/credit-products/:id', creditProductController.getCreditProductById)
 // Simulador de Créditos (PÚBLICO - No requiere Login)
 router.post('/simulations/credits', optionalAuth, validateCreditSimulation, simulationController.simulateCredit);
 router.post('/simulations/credit', optionalAuth, validateCreditSimulation, simulationController.simulateCredit);
+router.post('/simulations/credits/compare', validateCreditComparison, simulationController.compareCreditSystems);
 router.get('/simulations/credits/:id', simulationController.getCreditSimulationById);
 router.get('/simulations/credits/:id/pdf', simulationController.getCreditSimulationPDF);
 

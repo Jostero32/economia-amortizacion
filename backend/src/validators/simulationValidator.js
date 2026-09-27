@@ -1,55 +1,58 @@
-const { body, validationResult } = require('express-validator');
-const { errorResponse } = require('../utils/apiResponse');
-const { todayISO } = require('../utils/dates');
+const { body } = require('express-validator');
+const { validateRequest } = require('./validateRequest');
+const { todayISO, addDays } = require('../utils/dates');
 
-function isTodayOrFutureDate(value) {
-  if (!value) return true;
-  // Comparación de cadenas YYYY-MM-DD contra el día actual en Ecuador
-  return String(value).slice(0, 10) >= todayISO();
+// Una operación se puede programar hasta 90 días después de hoy
+const MAX_START_DAYS = 90;
+const AMOUNT_FORMAT = { decimal_digits: '0,2' };
+
+/**
+ * Fecha de desembolso o apertura: formato YYYY-MM-DD, desde hoy (hora de Ecuador) hasta 90 días
+ * @param {string} label - "desembolso" o "apertura"
+ */
+function startDateRule(label) {
+  return body('startDate')
+    .optional({ values: 'falsy' })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('La fecha debe tener el formato AAAA-MM-DD.')
+    .bail()
+    .isISO8601({ strict: true })
+    .withMessage('La fecha indicada no existe.')
+    .bail()
+    .custom((value) => value >= todayISO())
+    .withMessage(`La fecha de ${label} no puede ser anterior a hoy.`)
+    .bail()
+    .custom((value) => value <= addDays(todayISO(), MAX_START_DAYS))
+    .withMessage(`La fecha de ${label} no puede superar ${MAX_START_DAYS} días desde hoy.`);
 }
 
-function validateResults(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return errorResponse(
-      res,
-      'Datos de simulación inválidos: ' + errors.array().map(e => e.msg).join(', '),
-      400,
-      errors.array()
-    );
-  }
-  next();
+function amountRule(emptyMessage) {
+  return body('amount')
+    .notEmpty()
+    .withMessage(emptyMessage)
+    .bail()
+    .isDecimal(AMOUNT_FORMAT)
+    .withMessage('El monto debe ser un número con máximo 2 decimales.')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('El monto debe ser mayor a $0.');
 }
 
-const validateCreditSimulation = [
+const creditRules = [
   body('creditTypeId')
     .notEmpty()
-    .withMessage('El tipo de crédito es obligatorio.')
+    .withMessage('Selecciona un tipo de crédito.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El ID del tipo de crédito debe ser un número entero válido.'),
-  body('amount')
-    .notEmpty()
-    .withMessage('El monto del crédito es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto debe ser un valor numérico mayor a 0.'),
+    .withMessage('El tipo de crédito seleccionado no es válido.'),
+  amountRule('Ingresa el monto del crédito.'),
   body('termMonths')
     .notEmpty()
-    .withMessage('El plazo en meses es obligatorio.')
-    .isInt({ min: 1 })
-    .withMessage('El plazo debe ser un número entero positivo mayor a 0.'),
-  body('amortizationSystem')
-    .notEmpty()
-    .withMessage('El sistema de amortización es obligatorio.')
-    .toUpperCase()
-    .isIn(['FRANCES', 'ALEMAN'])
-    .withMessage('El sistema de amortización debe ser FRANCES o ALEMAN.'),
-  body('startDate')
-    .optional()
-    .isISO8601({ strict: true, strictSeparator: true })
-    .withMessage('La fecha de inicio debe tener formato válido YYYY-MM-DD.')
+    .withMessage('Ingresa el plazo en meses.')
     .bail()
-    .custom(isTodayOrFutureDate)
-    .withMessage('La fecha de inicio debe ser hoy o una fecha futura.'),
+    .isInt({ min: 1 })
+    .withMessage('El plazo debe ser un número entero de meses.'),
+  startDateRule('desembolso'),
   body('cargosOpcionales')
     .optional()
     .isArray()
@@ -57,36 +60,44 @@ const validateCreditSimulation = [
   body('cargosOpcionales.*')
     .isInt({ min: 1 })
     .withMessage('Cada cargo opcional debe ser un identificador válido.'),
-  validateResults,
 ];
+
+const validateCreditSimulation = [
+  ...creditRules,
+  body('amortizationSystem')
+    .notEmpty()
+    .withMessage('Elige el tipo de cuota: fija (francés) o decreciente (alemán).')
+    .bail()
+    .toUpperCase()
+    .isIn(['FRANCES', 'ALEMAN'])
+    .withMessage('El sistema de amortización debe ser FRANCES o ALEMAN.'),
+  validateRequest,
+];
+
+// La comparación calcula ambos sistemas, por eso no pide el sistema de amortización
+const validateCreditComparison = [...creditRules, validateRequest];
 
 const validateInvestmentSimulation = [
   body('investmentProductId')
     .notEmpty()
-    .withMessage('El producto de inversión es obligatorio.')
+    .withMessage('Selecciona un producto de inversión.')
+    .bail()
     .isInt({ min: 1 })
-    .withMessage('El ID del producto de inversión debe ser un número entero.'),
-  body('amount')
-    .notEmpty()
-    .withMessage('El monto de inversión es obligatorio.')
-    .isFloat({ min: 1 })
-    .withMessage('El monto a invertir debe ser mayor a 0.'),
+    .withMessage('El producto de inversión seleccionado no es válido.'),
+  amountRule('Ingresa el monto a invertir.'),
   body('termDays')
     .notEmpty()
-    .withMessage('El plazo en días es obligatorio.')
-    .isInt({ min: 1 })
-    .withMessage('El plazo debe ser mayor a 0 días.'),
-  body('startDate')
-    .optional()
-    .isISO8601({ strict: true, strictSeparator: true })
-    .withMessage('La fecha de inicio debe tener formato válido YYYY-MM-DD.')
+    .withMessage('Ingresa el plazo en días.')
     .bail()
-    .custom(isTodayOrFutureDate)
-    .withMessage('La fecha de inicio debe ser hoy o una fecha futura.'),
-  validateResults,
+    .isInt({ min: 1 })
+    .withMessage('El plazo debe ser un número entero de días.'),
+  startDateRule('apertura'),
+  validateRequest,
 ];
 
 module.exports = {
+  MAX_START_DAYS,
   validateCreditSimulation,
+  validateCreditComparison,
   validateInvestmentSimulation,
 };
