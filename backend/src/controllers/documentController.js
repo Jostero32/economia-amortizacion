@@ -140,6 +140,16 @@ async function updateDocumentStatus(req, res, next) {
       return errorResponse(res, `Estado inválido. Opciones permitidas: ${validStates.join(', ')}`, 400);
     }
 
+    // El cliente necesita saber qué corregir para volver a subir el documento
+    if (estado === 'RECHAZADO' && !String(comentarioRevision || '').trim()) {
+      return errorResponse(
+        res,
+        'Indica el motivo del rechazo para que el cliente pueda corregir el documento.',
+        400,
+        { comentarioRevision: 'El motivo del rechazo es obligatorio.' }
+      );
+    }
+
     const doc = await Document.findByPk(id);
     if (!doc) {
       return errorResponse(res, 'Documento no encontrado.', 404);

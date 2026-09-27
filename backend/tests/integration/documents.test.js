@@ -168,6 +168,21 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
     expect(res.body.data.document.estado).toBe('VALIDADO');
   });
 
+  test('rechazar un documento exige indicar el motivo para el cliente', async () => {
+    const withoutReason = await request(app)
+      .patch(`/api/admin/documents/${cedulaDocumentId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ estado: 'RECHAZADO' });
+    expect(withoutReason.status).toBe(400);
+    expect(withoutReason.body.errors.comentarioRevision).toBeDefined();
+
+    const withReason = await request(app)
+      .patch(`/api/admin/documents/${cedulaDocumentId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ estado: 'RECHAZADO', comentarioRevision: 'La imagen está borrosa.' });
+    expect(withReason.status).toBe(200);
+  });
+
   test('PATCH /api/admin/applications/:id/status impide aprobar un expediente incompleto', async () => {
     const res = await request(app)
       .patch(`/api/admin/applications/${application.id}/status`)
