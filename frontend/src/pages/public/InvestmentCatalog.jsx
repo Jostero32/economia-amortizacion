@@ -4,6 +4,7 @@ import { publicService } from '../../services/api';
 import Button from '../../components/Button';
 import { LoadingState } from '../../components/Spinner';
 import { ErrorState } from '../../components/EmptyState';
+import { formatPercent } from '../../utils/format';
 
 export default function InvestmentCatalog() {
   const [products, setProducts] = useState([]);
@@ -70,7 +71,7 @@ export default function InvestmentCatalog() {
           const highestRate =
             product.rates && product.rates.length > 0
               ? Math.max(...product.rates.map((r) => Number(r.tasa)))
-              : 8.65;
+              : Number(product.tasa || 0);
 
           return (
             <div
@@ -97,14 +98,14 @@ export default function InvestmentCatalog() {
                 <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100/80">
                   <div className="flex items-baseline justify-between">
                     <div className="text-[32px] font-bold text-secondary tracking-tight font-numeric-data">
-                      Hasta {highestRate.toFixed(2)}%
+                      Hasta {formatPercent(highestRate)}
                     </div>
                     <span className="material-symbols-outlined text-secondary text-[20px]">
                       trending_up
                     </span>
                   </div>
                   <div className="text-[13px] text-on-surface-variant font-medium">
-                    Rendimiento anual estimado
+                    Tasa nominal anual según el plazo
                   </div>
                 </div>
 
@@ -125,7 +126,7 @@ export default function InvestmentCatalog() {
                       Plazos:
                     </span>
                     <span className="font-semibold text-primary font-numeric-data">
-                      Desde 30 hasta 720+ días
+                      {product.plazoMinimoDias} a {product.plazoMaximoDias} días
                     </span>
                   </div>
                 </div>
@@ -133,7 +134,7 @@ export default function InvestmentCatalog() {
                 {/* Nivel 3: Garantía y Beneficios */}
                 <div className="text-[12px] text-gray-500 pt-2 border-t border-gray-100 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px] text-emerald-600">verified_user</span>
-                  <span>Protegido por COSEDE • Exento de retención SRI (≥ 180 días)</span>
+                  <span>Seguro COSEDE hasta 2.000 • Sin retención de IR desde 180 días</span>
                 </div>
               </div>
 

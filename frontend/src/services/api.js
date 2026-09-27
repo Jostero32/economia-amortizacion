@@ -36,6 +36,40 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Descarga un archivo del API usando la cookie de sesión y lo guarda con el nombre indicado.
+ * Se usa en lugar de window.open para que funcione también con endpoints protegidos.
+ */
+export async function downloadFile(path, fileName) {
+  try {
+    const response = await axios.get(`${API_BASE_URL}${path}`, {
+      responseType: 'blob',
+      withCredentials: true,
+    });
+    const url = window.URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    let message = 'No se pudo descargar el archivo. Intenta nuevamente.';
+    const data = error.response?.data;
+    if (data instanceof Blob) {
+      try {
+        message = JSON.parse(await data.text()).message || message;
+      } catch {
+        // La respuesta de error no es JSON: se mantiene el mensaje genérico
+      }
+    }
+    throw { message, statusCode: error.response?.status || 500 };
+  }
+}
+
+const shortId = (id) => String(id).slice(0, 8);
+
 // Endpoints de Autenticación
 export const authService = {
   register: (data) => api.post('/auth/register', data),
@@ -52,12 +86,16 @@ export const publicService = {
   simulateCredit: (data) => api.post('/simulations/credits', data),
   getCreditSimulation: (id) => api.get(`/simulations/credits/${id}`),
   getCreditSimulationPdfUrl: (id) => `${API_BASE_URL}/simulations/credits/${id}/pdf`,
+  downloadCreditSimulationPdf: (id) =>
+    downloadFile(`/simulations/credits/${id}/pdf`, `Simulacion_Credito_${shortId(id)}.pdf`),
 
   getInvestmentProducts: () => api.get('/investment-products'),
   getInvestmentProductById: (id) => api.get(`/investment-products/${id}`),
   simulateInvestment: (data) => api.post('/simulations/investments', data),
   getInvestmentSimulation: (id) => api.get(`/simulations/investments/${id}`),
   getInvestmentSimulationPdfUrl: (id) => `${API_BASE_URL}/simulations/investments/${id}/pdf`,
+  downloadInvestmentSimulationPdf: (id) =>
+    downloadFile(`/simulations/investments/${id}/pdf`, `Simulacion_Inversion_${shortId(id)}.pdf`),
 };
 
 // Endpoints de Cliente
