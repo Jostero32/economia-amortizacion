@@ -66,11 +66,21 @@ async function seedDatabase() {
     },
   ];
 
+  // Cédulas demo de versiones anteriores que no cumplían el dígito verificador
+  const cedulasDemoAnteriores = {
+    '1710000001': '1710000017',
+    '1710000002': '1710000025',
+    '1710000003': '1710000033',
+  };
+
   for (const u of usersToCreate) {
     const exists = await User.findOne({ where: { email: u.email } });
     if (!exists) {
       await User.create(u);
       console.log(`[Seed] Usuario ${u.rol} (${u.email}) creado.`);
+    } else if (cedulasDemoAnteriores[exists.cedula] === u.cedula) {
+      await exists.update({ cedula: u.cedula });
+      console.log(`[Seed] Cédula del usuario demo ${u.email} actualizada a una cédula válida.`);
     }
   }
 
