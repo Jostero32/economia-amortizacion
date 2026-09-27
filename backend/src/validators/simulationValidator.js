@@ -1,12 +1,11 @@
 const { body, validationResult } = require('express-validator');
 const { errorResponse } = require('../utils/apiResponse');
+const { todayISO } = require('../utils/dates');
 
 function isTodayOrFutureDate(value) {
   if (!value) return true;
-  const inputDate = new Date(`${value}T00:00:00Z`);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  return inputDate >= today;
+  // Comparación de cadenas YYYY-MM-DD contra el día actual en Ecuador
+  return String(value).slice(0, 10) >= todayISO();
 }
 
 function validateResults(req, res, next) {

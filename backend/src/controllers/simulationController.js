@@ -17,6 +17,7 @@ const {
 } = require('../services/pdf/pdfService');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { Op } = require('sequelize');
+const { todayISO } = require('../utils/dates');
 
 /**
  * Simulación de Crédito (PÚBLICA - No requiere autenticación)
@@ -89,7 +90,7 @@ async function simulateCredit(req, res, next) {
       termMonths: n,
       annualRate: tasaInstitucion,
       system: sistema,
-      startDate: startDate || new Date().toISOString().split('T')[0],
+      startDate: startDate || todayISO(),
       charges,
     });
 
@@ -262,7 +263,7 @@ async function simulateInvestment(req, res, next) {
       amount: P,
       termDays: dias,
       annualRate: applicableRate,
-      startDate: startDate || new Date().toISOString().split('T')[0],
+      startDate: startDate || todayISO(),
     });
 
     const userId = req.user ? req.user.id : null;

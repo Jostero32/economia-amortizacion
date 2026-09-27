@@ -10,6 +10,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { publicService } from '../../services/api';
+import { todayISO } from '../../utils/dates';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
@@ -35,8 +36,8 @@ export default function CreditSimulator() {
   const [termMonths, setTermMonths] = useState(Number(searchParams.get('plazo')) || 24);
   const [termUnit, setTermUnit] = useState('MESES'); // 'MESES' | 'ANIOS'
   const [amortizationSystem, setAmortizationSystem] = useState('FRANCES');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const todayISO = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(todayISO);
+  const minStartDate = todayISO();
 
   // Simulation Result State
   const [simulation, setSimulation] = useState(null);
@@ -491,7 +492,7 @@ export default function CreditSimulator() {
               <input
                 id="start-date"
                 type="date"
-                min={todayISO}
+                min={minStartDate}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full h-10 px-3 bg-gray-50/50 text-primary text-[13px] rounded-lg border border-gray-200 focus:outline-none focus:bg-white focus:border-secondary transition-colors"

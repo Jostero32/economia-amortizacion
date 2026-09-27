@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { publicService } from '../../services/api';
+import { todayISO } from '../../utils/dates';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import Alert from '../../components/Alert';
@@ -22,11 +23,11 @@ export default function InvestmentSimulator() {
   const [termDays, setTermDays] = useState(360);
   const [customDays, setCustomDays] = useState(false);
   const [paymentFrequency, setPaymentFrequency] = useState('maturity');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(todayISO);
 
   // Simulation Result State
   const [simulation, setSimulation] = useState(null);
-  const todayISO = new Date().toISOString().split('T')[0];
+  const minStartDate = todayISO();
 
   const selectedProduct =
     products.find((p) => String(p.id) === String(selectedProductId)) || products[0];
@@ -50,7 +51,7 @@ export default function InvestmentSimulator() {
             investmentProductId: parseInt(defaultId, 10),
             amount: 15000,
             termDays: 360,
-            startDate: new Date().toISOString().split('T')[0],
+            startDate: todayISO(),
           });
         }
       })
@@ -307,7 +308,7 @@ export default function InvestmentSimulator() {
               <input
                 id="inv-start-date"
                 type="date"
-                min={todayISO}
+                min={minStartDate}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full h-10 px-3 bg-gray-50/50 text-primary text-[13px] rounded-lg border border-gray-200 focus:outline-none focus:bg-white focus:border-secondary transition-colors"
