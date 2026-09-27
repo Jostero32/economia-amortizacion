@@ -17,6 +17,7 @@ export default function Sidebar({ mode = 'client' }) {
   const adminLinks = [
     { to: '/admin', label: 'Panel General', iconName: 'analytics', end: true, role: 'ASESOR' },
     { to: '/admin/solicitudes', label: 'Solicitudes', iconName: 'assignment', role: 'ASESOR' },
+    { to: '/admin/documentos', label: 'Documentos', iconName: 'folder_shared', role: 'ASESOR' },
     { to: '/admin/usuarios', label: 'Usuarios y Accesos', iconName: 'group', role: 'ASESOR' },
 
     // Exclusivo ADMIN

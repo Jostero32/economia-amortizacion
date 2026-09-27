@@ -4,6 +4,26 @@ import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import FormInput from '../../components/FormInput';
 import Alert from '../../components/Alert';
+import { rules, isValidCedula, isValidPhone } from '../../utils/validation';
+
+function validate(form) {
+  const errors = {
+    nombres: rules.name(form.nombres, 'nombres'),
+    apellidos: rules.name(form.apellidos, 'apellidos'),
+    email: rules.email(form.email),
+    cedula: form.cedula && !isValidCedula(form.cedula) ? 'La cédula no es válida. Revisa los 10 dígitos.' : undefined,
+    telefono: form.telefono && !isValidPhone(form.telefono)
+      ? 'Ingresa un celular de 10 dígitos (09...) o un teléfono fijo con código de provincia.'
+      : undefined,
+    password: !form.password
+      ? 'Ingresa una contraseña.'
+      : form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)
+        ? 'Usa al menos 8 caracteres con letras y números.'
+        : undefined,
+    confirmPassword: form.confirmPassword !== form.password ? 'Las contraseñas no coinciden.' : undefined,
+  };
+  return Object.fromEntries(Object.entries(errors).filter(([, value]) => value));
+}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -21,23 +41,22 @@ export default function Register() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Las contraseñas ingresadas no coinciden.');
-      return;
-    }
-
-    if (formData.cedula && formData.cedula.length !== 10) {
-      setError('La cédula de identidad ecuatoriana debe tener exactamente 10 dígitos.');
+    const errors = validate(formData);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Revisa los campos marcados.');
       return;
     }
 
@@ -47,10 +66,10 @@ export default function Register() {
       const fullName = `${formData.nombres.trim()} ${formData.apellidos.trim()}`;
       await register({
         nombre: fullName,
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password,
-        cedula: formData.cedula,
-        telefono: formData.telefono,
+        cedula: formData.cedula.trim(),
+        telefono: formData.telefono.trim(),
       });
 
       navigate('/login', {
@@ -59,7 +78,12 @@ export default function Register() {
         },
       });
     } catch (err) {
-      setError(err.message || 'Error al procesar el registro de cliente.');
+      setError(err.message || 'No se pudo crear la cuenta. Intenta nuevamente.');
+      if (err.errors && !Array.isArray(err.errors)) {
+        // El backend valida el nombre completo en el campo "nombre"
+        const { nombre, ...rest } = err.errors;
+        setFieldErrors({ ...rest, ...(nombre ? { nombres: nombre } : {}) });
+      }
     } finally {
       setLoading(false);
     }
@@ -79,7 +103,7 @@ export default function Register() {
       {error && <Alert type="error" title="Atención">{error}</Alert>}
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormInput
               label="Nombres"
@@ -87,6 +111,7 @@ export default function Register() {
               value={formData.nombres}
               onChange={handleChange}
               placeholder="Juan Mateo"
+              error={fieldErrors.nombres}
               required
             />
             <FormInput
@@ -95,6 +120,7 @@ export default function Register() {
               value={formData.apellidos}
               onChange={handleChange}
               placeholder="Pérez Gómez"
+              error={fieldErrors.apellidos}
               required
             />
           </div>
@@ -103,19 +129,22 @@ export default function Register() {
             <FormInput
               label="Cédula de identidad"
               name="cedula"
+              inputMode="numeric"
               value={formData.cedula}
               onChange={handleChange}
-              placeholder="1720000001"
+              placeholder="1712345678"
               maxLength={10}
-              required
+              error={fieldErrors.cedula}
               hint="10 dígitos numéricos"
             />
             <FormInput
               label="Teléfono"
               name="telefono"
+              inputMode="tel"
               value={formData.telefono}
               onChange={handleChange}
               placeholder="0991234567"
+              error={fieldErrors.telefono}
             />
           </div>
 
@@ -126,6 +155,7 @@ export default function Register() {
             value={formData.email}
             onChange={handleChange}
             placeholder="ejemplo@correo.com"
+            error={fieldErrors.email}
             required
           />
 
@@ -137,6 +167,8 @@ export default function Register() {
               value={formData.password}
               onChange={handleChange}
               placeholder="••••••••"
+              error={fieldErrors.password}
+              hint="Mínimo 8 caracteres, con letras y números."
               required
             />
             <FormInput
@@ -146,6 +178,7 @@ export default function Register() {
               value={formData.confirmPassword}
               onChange={handleChange}
               placeholder="••••••••"
+              error={fieldErrors.confirmPassword}
               required
             />
           </div>

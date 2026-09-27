@@ -27,9 +27,14 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    // Sin respuesta del servidor: problema de red o servidor caído
+    const fallbackMessage = error.response
+      ? 'Ocurrió un problema al procesar tu solicitud. Intenta nuevamente.'
+      : 'No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.';
     const customError = {
-      message: error.response?.data?.message || error.message || 'Error en la conexión con el servidor',
-      statusCode: error.response?.status || 500,
+      message: error.response?.data?.message || fallbackMessage,
+      statusCode: error.response?.status || 0,
+      // Errores por campo: { campo: mensaje }
       errors: error.response?.data?.errors || null,
     };
     return Promise.reject(customError);
@@ -115,6 +120,11 @@ export const clientService = {
     }),
   getDocumentUrl: (id) => `${API_BASE_URL}/documents/${id}`,
   getMyCreditSimulations: () => api.get('/simulations/my'),
+  getMySimulations: () => api.get('/simulations/my'),
+  downloadCreditApplicationPdf: (application) =>
+    downloadFile(`/credit-applications/${application.id}/pdf`, `Solicitud_${application.codigo || shortId(application.id)}.pdf`),
+  downloadInvestmentApplicationPdf: (application) =>
+    downloadFile(`/investment-applications/${application.id}/pdf`, `Solicitud_${application.codigo || shortId(application.id)}.pdf`),
 };
 
 

@@ -1,37 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { adminService, clientService } from '../../services/api';
-import Card from '../../components/Card';
 import Button from '../../components/Button';
-import Badge from '../../components/Badge';
 import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
+import CreditSummary, { MAX_DEBT_TO_INCOME } from '../../components/credit/CreditSummary';
+import AmortizationTable from '../../components/credit/AmortizationTable';
+import AdvisorReviewPanel from '../../components/application/AdvisorReviewPanel';
+import { formatMoney, formatPercent, formatDate, formatDateTime } from '../../utils/format';
 
 export default function ApplicationDetail() {
   const { id } = useParams();
   const [application, setApplication] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [showTable, setShowTable] = useState(false);
   const [error, setError] = useState(null);
-  const [successMsg, setSuccessMsg] = useState(null);
-
-  // Asesor resolution form
-  const [estado, setEstado] = useState('PENDIENTE');
-  const [observacionAsesor, setObservacionAsesor] = useState('');
-  const [biometriaValidada, setBiometriaValidada] = useState(false);
 
   const loadApplication = () => {
     adminService
       .getApplicationById(id)
-      .then((res) => {
-        if (res.success && res.data?.application) {
-          const app = res.data.application;
-          setApplication(app);
-          setEstado(app.estado);
-          setObservacionAsesor(app.observacionAsesor || '');
-          setBiometriaValidada(Boolean(app.biometriaValidada));
-        }
-      })
+      .then((res) => setApplication(res.data.application))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
@@ -40,328 +29,126 @@ export default function ApplicationDetail() {
     loadApplication();
   }, [id]);
 
-  const handleUpdateStatus = async (e) => {
-    e.preventDefault();
-    setUpdating(true);
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
     setError(null);
-    setSuccessMsg(null);
-
     try {
-      const res = await adminService.updateApplicationStatus(id, {
-        estado,
-        observacionAsesor,
-        biometriaValidada,
-      });
-
-      if (res.success) {
-        setSuccessMsg('Estado y resolución del asesor actualizados exitosamente.');
-        loadApplication();
-      }
+      await clientService.downloadCreditApplicationPdf(application);
     } catch (err) {
-      setError(err.message || 'Error al actualizar el expediente.');
+      setError(err.message);
     } finally {
-      setUpdating(false);
+      setDownloading(false);
     }
   };
-
-  const handleDocumentValidate = async (docId, newDocStatus) => {
-    try {
-      const res = await adminService.updateDocumentStatus(docId, {
-        estado: newDocStatus,
-        comentarioRevision: `Revisado por asesor el ${new Date().toLocaleDateString('es-EC')}`,
-      });
-      if (res.success) {
-        loadApplication();
-      }
-    } catch (err) {
-      alert(err.message || 'Error al actualizar documento');
-    }
-  };
-
-  const formatUSD = (val) =>
-    new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   if (loading) {
-    return <LoadingState message="Cargando expediente para revisión del asesor..." />;
+    return <LoadingState message="Cargando solicitud..." />;
   }
 
   if (!application) {
     return (
       <div className="text-center py-12 space-y-3">
-        <p className="text-on-surface-variant font-body-sm text-[13px]">
-          Expediente no encontrado.
-        </p>
+        <p className="text-[13px] text-on-surface-variant">{error || 'Solicitud no encontrada.'}</p>
         <Link to="/admin/solicitudes">
-          <Button variant="outline" size="sm" iconName="arrow_back">
-            Volver a la lista
-          </Button>
+          <Button variant="outline" size="sm" iconName="arrow_back">Volver a la lista</Button>
         </Link>
       </div>
     );
   }
 
+  const simulation = application.simulation;
+  const rows = simulation?.rows || [];
+  const ingresos = Number(application.ingresosMensuales);
+  const egresos = Number(application.egresosMensuales);
+  const relacion = application.relacionCuotaIngreso != null ? Number(application.relacionCuotaIngreso) : null;
+
   return (
     <div className="space-y-space-md max-w-[1440px] mx-auto">
-      {/* Header */}
-      <div className="bg-surface-container-lowest p-space-lg rounded-xl border border-surface-container-high shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+      <div className="bg-surface-container-lowest p-space-lg rounded-xl border border-surface-container-high shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-1.5 text-on-surface-variant font-body-sm text-[12px] mb-1">
-            <Link to="/admin/solicitudes" className="hover:text-secondary flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">arrow_back</span>
-              Solicitudes
-            </Link>
-            <span>/</span>
-            <span className="text-primary font-semibold">
-              Expediente #{application.codigo || application.id.slice(0, 8)}
-            </span>
-          </div>
-          <h1 className="font-headline-lg text-[24px] sm:text-[28px] text-primary font-bold">
-            Revisión de Solicitud de Crédito
+          <Link to="/admin/solicitudes" className="text-[12px] text-secondary hover:underline">← Solicitudes</Link>
+          <h1 className="font-headline-lg text-[24px] sm:text-[28px] text-primary font-bold mt-1">
+            Solicitud de crédito {application.codigo}
           </h1>
-          <p className="font-body-sm text-[13px] text-on-surface-variant mt-0.5">
-            Solicitante: <strong>{application.nombres} {application.apellidos}</strong> (C.I: {application.cedula})
+          <p className="text-[13px] text-on-surface-variant">
+            {application.nombres} {application.apellidos} · C.I. {application.cedula} · registrada el {formatDateTime(application.createdAt)}
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <Badge variant={application.estado} size="lg">
-            {application.estado}
-          </Badge>
-        </div>
+        {simulation && (
+          <Button variant="outline" iconName="download" onClick={handleDownloadPdf} loading={downloading} loadingText="Descargando...">
+            Descargar PDF
+          </Button>
+        )}
       </div>
 
-      {successMsg && <Alert type="success" title="Completado">{successMsg}</Alert>}
-      {error && <Alert type="error" title="Error">{error}</Alert>}
+      {error && <Alert type="error">{error}</Alert>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
-        {/* Left Column: Client Data & Loan Parameters (7 Cols) */}
-        <div className="lg:col-span-7 flex flex-col gap-space-md">
-          <Card title="Datos Socioeconómicos del Solicitante" iconName="person">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[12px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md items-start">
+        <div className="lg:col-span-7 space-y-space-md">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-4">
+            <h2 className="text-[16px] font-bold text-primary">Capacidad de pago</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[13px]">
+              <div><span className="block text-gray-500">Ingresos</span><strong>{formatMoney(ingresos)}</strong></div>
+              <div><span className="block text-gray-500">Gastos</span><strong>{formatMoney(egresos)}</strong></div>
+              <div><span className="block text-gray-500">Disponible</span><strong>{formatMoney(ingresos - egresos)}</strong></div>
               <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Cédula
-                </span>
-                <span className="font-numeric-data font-bold text-primary">{application.cedula}</span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Teléfono
-                </span>
-                <span className="font-numeric-data font-medium text-primary">{application.telefono}</span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Correo
-                </span>
-                <span className="text-primary truncate block">{application.email}</span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Ciudad
-                </span>
-                <span className="text-primary font-medium">{application.ciudad}</span>
-              </div>
-              <div className="sm:col-span-2">
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Dirección
-                </span>
-                <span className="text-primary font-medium">{application.direccion}</span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Actividad
-                </span>
-                <span className="text-primary font-medium">{application.actividadEconomica}</span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Ingresos Mensuales
-                </span>
-                <span className="font-numeric-data font-bold text-emerald-800">
-                  {formatUSD(application.ingresosMensuales)}
-                </span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Egresos Mensuales
-                </span>
-                <span className="font-numeric-data font-bold text-primary">
-                  {formatUSD(application.egresosMensuales)}
-                </span>
+                <span className="block text-gray-500">Cuota / ingreso</span>
+                <strong className={relacion !== null && relacion > MAX_DEBT_TO_INCOME * 100 ? 'text-red-700' : 'text-emerald-700'}>
+                  {relacion !== null ? formatPercent(relacion, 1, 0) : '—'}
+                </strong>
               </div>
             </div>
-
-            {/* Loan parameters */}
-            <div className="mt-4 pt-4 border-t border-surface-container-high bg-surface-container-low p-3.5 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Monto Solicitado
-                </span>
-                <span className="font-numeric-data font-bold text-primary text-[15px]">
-                  {formatUSD(application.monto)}
-                </span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Plazo
-                </span>
-                <span className="font-numeric-data font-bold text-primary text-[15px]">
-                  {application.plazoMeses} meses
-                </span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Tasa TEA
-                </span>
-                <span className="font-numeric-data font-bold text-secondary text-[15px]">
-                  {Number(application.creditType?.tasaInstitucion || 15.2).toFixed(2)}%
-                </span>
-              </div>
-              <div>
-                <span className="font-badge-label text-[10px] text-on-surface-variant uppercase block">
-                  Sistema
-                </span>
-                <span className="font-title-md font-bold text-primary text-[14px]">
-                  {application.sistemaAmortizacion}
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Document Review List (Requerimiento 35) */}
-          <Card title="Documentos del Expediente y Verificación" iconName="folder_shared">
-            {!application.documents || application.documents.length === 0 ? (
-              <p className="py-6 text-center text-[12px] text-on-surface-variant">
-                El cliente aún no ha subido documentos a esta solicitud.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {application.documents.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="p-3.5 rounded-lg bg-surface-container-low border border-surface-container-high flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div className="overflow-hidden">
-                      <div className="flex items-center gap-2">
-                        <span className="font-title-md text-[13px] text-primary font-bold">
-                          {doc.tipo}
-                        </span>
-                        <Badge variant={doc.estado} size="sm">
-                          {doc.estado}
-                        </Badge>
-                      </div>
-                      <div className="font-body-sm text-[11px] text-on-surface-variant truncate mt-0.5">
-                        {doc.nombreArchivo || 'Archivo adjunto'}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <a
-                        href={clientService.getDocumentUrl(doc.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 text-[12px] font-title-md text-secondary hover:bg-surface-container-high rounded border border-surface-container-high flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">visibility</span>
-                        Ver archivo
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => handleDocumentValidate(doc.id, 'VALIDADO')}
-                        className="px-2.5 py-1 text-[12px] font-title-md bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded border border-emerald-200 flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">check</span>
-                        Aprobar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDocumentValidate(doc.id, 'RECHAZADO')}
-                        className="px-2.5 py-1 text-[12px] font-title-md bg-red-50 text-red-800 hover:bg-red-100 rounded border border-red-200 flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">close</span>
-                        Rechazar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {relacion !== null && relacion > MAX_DEBT_TO_INCOME * 100 && (
+              <Alert type="warning">La cuota supera el 40 % de los ingresos del solicitante.</Alert>
             )}
-          </Card>
+            {application.autorizaConsultaBuro && (
+              <p className="text-[12px] text-gray-500">
+                El cliente autorizó la consulta de su historial crediticio el {formatDateTime(application.fechaAutorizacionBuro)}.
+              </p>
+            )}
+          </div>
+
+          {simulation && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6">
+              <CreditSummary simulation={simulation} rows={rows} />
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-bold text-primary">Tabla de amortización</h2>
+                <button type="button" className="text-[13px] text-secondary font-medium hover:underline" onClick={() => setShowTable((v) => !v)}>
+                  {showTable ? 'Ocultar' : `Ver las ${rows.length} cuotas`}
+                </button>
+              </div>
+              {showTable && <AmortizationTable rows={rows} simulation={simulation} />}
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6">
+            <h2 className="text-[16px] font-bold text-primary mb-3">Datos del solicitante</h2>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[13px]">
+              {[
+                ['Fecha de nacimiento', formatDate(application.fechaNacimiento)],
+                ['Estado civil', application.estadoCivil || '—'],
+                ['Teléfono', application.telefono],
+                ['Correo', application.email],
+                ['Ciudad', application.ciudad],
+                ['Dirección', application.direccion],
+                ['Actividad económica', application.actividadEconomica || '—'],
+              ].map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-3 border-b border-gray-100 py-1.5">
+                  <dt className="text-gray-500">{label}</dt>
+                  <dd className="text-primary font-medium text-right">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
 
-        {/* Right Column: Advisor Action & Status Update (5 Cols) */}
-        <div className="lg:col-span-5 flex flex-col gap-space-md">
-          <Card title="Resolución y Cambio de Estado" iconName="gavel">
-            <form onSubmit={handleUpdateStatus} className="space-y-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-title-md text-[13px] text-primary" htmlFor="estado-select">
-                  Estado de la Solicitud
-                </label>
-                <div className="relative">
-                  <select
-                    id="estado-select"
-                    value={estado}
-                    onChange={(e) => setEstado(e.target.value)}
-                    className="w-full h-11 px-3.5 pr-10 rounded-lg bg-surface-container-low text-primary font-title-md text-[13px] border border-surface-container-high focus:outline-none focus:border-secondary appearance-none cursor-pointer"
-                  >
-                    <option value="PENDIENTE">PENDIENTE</option>
-                    <option value="EN_REVISION">EN REVISIÓN</option>
-                    <option value="PENDIENTE_DOCUMENTOS">PENDIENTE DOCUMENTOS</option>
-                    <option value="APROBADA">APROBADA</option>
-                    <option value="RECHAZADA">RECHAZADA</option>
-                  </select>
-                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant text-[20px]">
-                    expand_more
-                  </span>
-                </div>
-              </div>
-
-              {/* Checkbox Validación Biométrica Simulada */}
-              <div className="p-3.5 rounded-lg bg-surface-container-low border border-surface-container-high space-y-1.5">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={biometriaValidada}
-                    onChange={(e) => setBiometriaValidada(e.target.checked)}
-                    className="h-4 w-4 rounded accent-secondary cursor-pointer"
-                  />
-                  <span className="font-title-md text-[13px] text-primary font-bold">
-                    Validación Biométrica Facial Aprobada
-                  </span>
-                </label>
-                <p className="font-body-sm text-[11px] text-on-surface-variant pl-6">
-                  Validación biométrica simulada: certifica que la cédula y la selfie corresponden a la misma persona física.
-                </p>
-              </div>
-
-              {/* Observación del asesor */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-title-md text-[13px] text-primary" htmlFor="observacion-input">
-                  Dictamen / Observación del Asesor
-                </label>
-                <textarea
-                  id="observacion-input"
-                  rows={4}
-                  value={observacionAsesor}
-                  onChange={(e) => setObservacionAsesor(e.target.value)}
-                  placeholder="Ingrese el dictamen, condiciones de desembolso o razones de rechazo..."
-                  className="w-full p-3 rounded-lg bg-surface-container-low text-on-surface font-body-md text-[13px] border border-surface-container-high focus:outline-none focus:border-secondary"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                variant="fintech"
-                loading={updating}
-                loadingText="Guardando resolución..."
-                className="w-full"
-                iconName="save"
-              >
-                Guardar cambios del expediente
-              </Button>
-            </form>
-          </Card>
+        <div className="lg:col-span-5">
+          <AdvisorReviewPanel application={application} tipo="CREDITO" onUpdated={loadApplication} />
         </div>
       </div>
     </div>
