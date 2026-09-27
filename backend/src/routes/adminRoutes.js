@@ -6,6 +6,13 @@ const { imageUpload } = require('../middleware/uploadMiddleware');
 const { validateInstitution } = require('../validators/institutionValidator');
 const { validateUserAccessUpdate } = require('../validators/userValidator');
 const { validateChargeCreate, validateChargeUpdate } = require('../validators/chargeValidator');
+const {
+  validateCreditProductCreate,
+  validateCreditProductUpdate,
+  validateInvestmentProductCreate,
+  validateInvestmentProductUpdate,
+  validateRateCreate,
+} = require('../validators/productValidator');
 
 const adminController = require('../controllers/adminController');
 const applicationController = require('../controllers/applicationController');
@@ -50,12 +57,12 @@ router.post('/institution/logo', adminAuth, imageUpload.single('logo'), adminCon
 router.patch('/users/:id/access', adminAuth, validateUserAccessUpdate, adminController.updateUserAccess);
 
 // Productos de Crédito
-router.post('/credit-products', adminAuth, adminController.createCreditProduct);
-router.put('/credit-products/:id', adminAuth, adminController.updateCreditProduct);
+router.post('/credit-products', adminAuth, validateCreditProductCreate, adminController.createCreditProduct);
+router.put('/credit-products/:id', adminAuth, validateCreditProductUpdate, adminController.updateCreditProduct);
 router.delete('/credit-products/:id', adminAuth, adminController.deleteCreditProduct);
 
 // Tasas con vigencia histórica
-router.post('/rates', adminAuth, adminController.createRate);
+router.post('/rates', adminAuth, validateRateCreate, adminController.createRate);
 router.put('/rates/:id', adminAuth, adminController.updateRate);
 
 // Cobros Adicionales (SOLCA, Desgravamen, etc.)
@@ -65,8 +72,8 @@ router.put('/charges/:id', adminAuth, validateChargeUpdate, adminController.upda
 router.delete('/charges/:id', adminAuth, adminController.deleteCharge);
 
 // Productos de Inversión (Depósito a Plazo Fijo)
-router.post('/investments', adminAuth, adminController.createInvestmentProduct);
-router.put('/investments/:id', adminAuth, adminController.updateInvestmentProduct);
+router.post('/investments', adminAuth, validateInvestmentProductCreate, adminController.createInvestmentProduct);
+router.put('/investments/:id', adminAuth, validateInvestmentProductUpdate, adminController.updateInvestmentProduct);
 router.delete('/investments/:id', adminAuth, adminController.deleteInvestmentProduct);
 
 // Auditoría

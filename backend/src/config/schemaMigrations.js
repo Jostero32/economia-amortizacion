@@ -52,6 +52,20 @@ const additiveMigrations = [
       costoEfectivoAnual: { type: DataTypes.DECIMAL(8, 4), allowNull: true },
     },
   },
+  {
+    tableName: 'credit_applications',
+    columns: {
+      relacionCuotaIngreso: { type: DataTypes.DECIMAL(6, 2), allowNull: true },
+      autorizaConsultaBuro: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      fechaAutorizacionBuro: { type: DataTypes.DATE, allowNull: true },
+    },
+  },
+  {
+    tableName: 'investment_applications',
+    columns: {
+      declaraLicitudFondos: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    },
+  },
 ];
 
 async function runAdditiveMigrations(sequelize) {

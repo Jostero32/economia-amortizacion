@@ -62,13 +62,17 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
       sistemaAmortizacion: 'FRANCES',
       nombres: 'Carlos',
       apellidos: 'Mendoza',
-      cedula: '1723456789',
+      cedula: '1723456784',
       direccion: 'Av. 10 de Agosto y Colón',
       ciudad: 'Quito',
       telefono: '0998877665',
       email: 'carlos@cliente.local',
+      fechaNacimiento: '1990-05-15',
+      estadoCivil: 'Casado/a',
+      actividadEconomica: 'Empleado privado',
       ingresosMensuales: 1500,
       egresosMensuales: 600,
+      autorizaConsultaBuro: true,
     };
 
     const res = await request(app)
@@ -81,6 +85,210 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     expect(res.body.data.application.id).toBeDefined();
     expect(Number(res.body.data.application.monto)).toBe(5000);
     expect(res.body.data.application.estado).toMatch(/PENDIENTE|EN_REVISION|BORRADOR|RECIBIDA/i);
+  });
+
+  describe('Reglas de la solicitud de crédito', () => {
+    const basePersonalData = {
+      nombres: 'Carlos',
+      apellidos: 'Mendoza',
+      cedula: '1723456784',
+      direccion: 'Av. 10 de Agosto y Colón',
+      ciudad: 'Quito',
+      telefono: '0998877665',
+      email: 'carlos@cliente.local',
+      fechaNacimiento: '1990-05-15',
+      actividadEconomica: 'Empleado privado',
+      ingresosMensuales: 1500,
+      egresosMensuales: 600,
+      autorizaConsultaBuro: true,
+    };
+
+    async function simulate(extra = {}) {
+      const res = await request(app)
+        .post('/api/simulations/credits')
+        .send({ creditTypeId: creditProduct.id, amount: 4000, termMonths: 12, amortizationSystem: 'FRANCES', ...extra });
+      return res.body.data.simulation;
+    }
+
+    function applicationFrom(simulation, extra = {}) {
+      return {
+        simulationId: simulation.id,
+        creditTypeId: simulation.creditTypeId,
+        monto: simulation.monto,
+        plazoMeses: simulation.plazoMeses,
+        sistemaAmortizacion: simulation.sistemaAmortizacion,
+        ...basePersonalData,
+        ...extra,
+      };
+    }
+
+    test('asigna un código correlativo y guarda la tabla de la simulación', async () => {
+      const simulation = await simulate();
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation));
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.application.codigo).toMatch(/^SOL-CRE-\d{4}-\d{6}$/);
+      expect(res.body.data.application.autorizaConsultaBuro).toBe(true);
+      expect(Number(res.body.data.application.relacionCuotaIngreso)).toBeGreaterThan(0);
+
+      const detail = await request(app)
+        .get(`/api/credit-applications/${res.body.data.application.id}`)
+        .set('Authorization', `Bearer ${clientToken}`);
+      expect(detail.body.data.application.simulation.rows).toHaveLength(12);
+    });
+
+    test('no permite dos solicitudes con la misma simulación (409)', async () => {
+      const simulation = await simulate();
+      const first = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation));
+      expect(first.status).toBe(201);
+
+      const second = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation));
+      expect(second.status).toBe(409);
+    });
+
+    test('rechaza usar la simulación guardada de otro cliente (403)', async () => {
+      const otherClient = await User.create({
+        nombre: 'Otra Clienta',
+        email: 'otra.clienta@test.local',
+        password: 'Cliente123!',
+        rol: 'CLIENTE',
+      });
+      const simRes = await request(app)
+        .post('/api/simulations/credits')
+        .set('Authorization', `Bearer ${generateTestToken(otherClient)}`)
+        .send({ creditTypeId: creditProduct.id, amount: 4000, termMonths: 12, amortizationSystem: 'FRANCES' });
+
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simRes.body.data.simulation));
+      expect(res.status).toBe(403);
+    });
+
+    test('rechaza si la cuota supera los ingresos disponibles, con un mensaje claro', async () => {
+      const simulation = await simulate();
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation, { ingresosMensuales: 500, egresosMensuales: 400 }));
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/supera tus ingresos disponibles/);
+    });
+
+    test('valida cédula, mayoría de edad y autorización de consulta al buró', async () => {
+      const simulation = await simulate();
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation, {
+          cedula: '1710000001',
+          fechaNacimiento: `${new Date().getFullYear() - 16}-01-01`,
+          autorizaConsultaBuro: false,
+        }));
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.cedula).toMatch(/cédula no es válida/);
+      expect(res.body.errors.fechaNacimiento).toMatch(/mayor de edad/);
+      expect(res.body.errors.autorizaConsultaBuro).toBeDefined();
+    });
+
+    test('rechaza si al terminar el crédito el cliente superaría la edad máxima', async () => {
+      const simulation = await simulate({ termMonths: 48 });
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send(applicationFrom(simulation, { fechaNacimiento: `${new Date().getFullYear() - 78}-01-01` }));
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/más de 80 años/);
+    });
+
+    test('un asesor no puede registrar solicitudes a su nombre (403)', async () => {
+      const simulation = await simulate();
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${advisorToken}`)
+        .send(applicationFrom(simulation));
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Flujo de estados de la solicitud', () => {
+    let applicationId;
+
+    beforeAll(async () => {
+      const simRes = await request(app)
+        .post('/api/simulations/credits')
+        .send({ creditTypeId: creditProduct.id, amount: 3000, termMonths: 12, amortizationSystem: 'ALEMAN' });
+      const simulation = simRes.body.data.simulation;
+      const res = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          simulationId: simulation.id,
+          creditTypeId: simulation.creditTypeId,
+          monto: simulation.monto,
+          plazoMeses: simulation.plazoMeses,
+          sistemaAmortizacion: simulation.sistemaAmortizacion,
+          nombres: 'Carlos',
+          apellidos: 'Mendoza',
+          cedula: '1723456784',
+          direccion: 'Av. 10 de Agosto y Colón',
+          ciudad: 'Quito',
+          telefono: '0998877665',
+          email: 'carlos@cliente.local',
+          fechaNacimiento: '1990-05-15',
+          actividadEconomica: 'Empleado privado',
+          ingresosMensuales: 1500,
+          egresosMensuales: 600,
+          autorizaConsultaBuro: true,
+        });
+      applicationId = res.body.data.application.id;
+    });
+
+    const patchStatus = (body) => request(app)
+      .patch(`/api/admin/applications/${applicationId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send(body);
+
+    test('no se puede aprobar sin pasar por revisión', async () => {
+      const res = await patchStatus({ estado: 'APROBADA', biometriaValidada: true });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/pendiente no puede pasar a aprobada/);
+    });
+
+    test('rechazar exige una observación para el cliente', async () => {
+      const res = await patchStatus({ estado: 'RECHAZADA' });
+      expect(res.status).toBe(400);
+      expect(res.body.errors.observacionAsesor).toBeDefined();
+    });
+
+    test('una solicitud rechazada queda cerrada: no cambia de estado ni recibe documentos', async () => {
+      const rejected = await patchStatus({ estado: 'RECHAZADA', observacionAsesor: 'Capacidad de pago insuficiente.' });
+      expect(rejected.status).toBe(200);
+
+      const reopen = await patchStatus({ estado: 'EN_REVISION' });
+      expect(reopen.status).toBe(400);
+      expect(reopen.body.message).toMatch(/ya fue rechazada/);
+
+      const upload = await request(app)
+        .post('/api/documents')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .field('tipo', 'CEDULA')
+        .field('creditApplicationId', applicationId)
+        .attach('archivo', Buffer.from('cedula'), 'cedula.png');
+      expect(upload.status).toBe(400);
+    });
   });
 
   test('GET /api/credit-applications/my lista las solicitudes del cliente autenticado', async () => {
@@ -101,7 +309,7 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
       plazoDias: 360,
       nombres: 'Carlos',
       apellidos: 'Mendoza',
-      cedula: '1723456789',
+      cedula: '1723456784',
       direccion: 'Av. 10 de Agosto y Colón',
       ciudad: 'Quito',
       telefono: '0998877665',
@@ -110,6 +318,7 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
       ingresosMensuales: 1500,
       origenFondos: 'Ahorros laborales',
       finalidadInversion: 'Ahorro para estudios de posgrado',
+      declaraLicitudFondos: true,
     };
 
     const res = await request(app)
@@ -155,13 +364,14 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
         plazoDias: simulation.plazoDias,
         nombres: 'Carlos',
         apellidos: 'Mendoza',
-        cedula: '1723456789',
+        cedula: '1723456784',
         telefono: '0998877665',
         email: 'carlos@cliente.local',
         actividadEconomica: 'Empleado bajo relación de dependencia',
         ingresosMensuales: 1500,
         origenFondos: 'Ahorros laborales',
         finalidadInversion: 'Fondo para estudios',
+        declaraLicitudFondos: true,
       });
 
     expect(res.status).toBe(201);
@@ -194,6 +404,13 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
       estado: 'VALIDADO',
       revisadoPor: advisorUser.id,
     })));
+
+    // El análisis es previo a la aprobación
+    const review = await request(app)
+      .patch(`/api/admin/applications/${investmentApplicationId}/status`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ tipo: 'INVERSION', estado: 'EN_REVISION' });
+    expect(review.status).toBe(200);
 
     const res = await request(app)
       .patch(`/api/admin/applications/${investmentApplicationId}/status`)

@@ -11,6 +11,7 @@ const {
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
+const { todayISO } = require('../utils/dates');
 
 // 1. Institución
 async function updateInstitution(req, res, next) {
@@ -128,7 +129,7 @@ async function createCreditProduct(req, res, next) {
     await CreditRate.create({
       creditTypeId: product.id,
       tasa: Number(tasaInstitucion),
-      fechaVigencia: new Date().toISOString().split('T')[0],
+      fechaVigencia: todayISO(),
       fuente: 'Configuración Administrativa',
       activo: true,
     });
@@ -179,6 +180,18 @@ async function updateCreditProduct(req, res, next) {
       }
     }
 
+    // Los límites deben ser coherentes también con los valores ya guardados
+    const nextMontoMinimo = Number(montoMinimo !== undefined ? montoMinimo : product.montoMinimo);
+    const nextMontoMaximo = Number(montoMaximo !== undefined ? montoMaximo : product.montoMaximo);
+    const nextPlazoMinimo = Number(plazoMinimo !== undefined ? plazoMinimo : product.plazoMinimo);
+    const nextPlazoMaximo = Number(plazoMaximo !== undefined ? plazoMaximo : product.plazoMaximo);
+    if (nextMontoMaximo < nextMontoMinimo) {
+      return errorResponse(res, 'El monto máximo no puede ser menor al monto mínimo.', 400);
+    }
+    if (nextPlazoMaximo < nextPlazoMinimo) {
+      return errorResponse(res, 'El plazo máximo no puede ser menor al plazo mínimo.', 400);
+    }
+
     // Si se modifica la tasa, validar contra la tasa máxima vigente del segmento
     const newRate = tasaInstitucion !== undefined ? Number(tasaInstitucion) : Number(product.tasaInstitucion);
     if (newRate > Number(segment.tasaMaxima)) {
@@ -191,7 +204,7 @@ async function updateCreditProduct(req, res, next) {
 
     // Si cambió la tasa, cerrar vigencia de la anterior y crear nuevo registro histórico
     if (tasaInstitucion !== undefined && Number(tasaInstitucion) !== Number(product.tasaInstitucion)) {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = todayISO();
 
       // Finalizar tasa anterior
       await CreditRate.update(
@@ -410,7 +423,7 @@ async function createInvestmentProduct(req, res, next) {
       plazoMaximoDias: plazoMaximoDias || 1080,
       tasa: tasa || 5.09,
       fuente: fuente || 'Banco Central del Ecuador',
-      fechaVigencia: new Date().toISOString().split('T')[0],
+      fechaVigencia: todayISO(),
       activo: true,
     });
 
@@ -428,13 +441,47 @@ async function createInvestmentProduct(req, res, next) {
   }
 }
 
+const INVESTMENT_PRODUCT_FIELDS = [
+  'nombre',
+  'descripcion',
+  'montoMinimo',
+  'montoMaximo',
+  'plazoMinimoDias',
+  'plazoMaximoDias',
+  'tasa',
+  'fuente',
+  'activo',
+];
+
 async function updateInvestmentProduct(req, res, next) {
   try {
     const { id } = req.params;
     const product = await InvestmentProduct.findByPk(id);
     if (!product) return errorResponse(res, 'Producto de inversión no encontrado.', 404);
 
-    await product.update(req.body);
+    const data = {};
+    INVESTMENT_PRODUCT_FIELDS.forEach((field) => {
+      if (req.body[field] !== undefined) data[field] = req.body[field];
+    });
+
+    const merged = { ...product.get({ plain: true }), ...data };
+    if (Number(merged.montoMaximo) < Number(merged.montoMinimo)) {
+      return errorResponse(res, 'El monto máximo no puede ser menor al monto mínimo.', 400);
+    }
+    if (Number(merged.plazoMaximoDias) < Number(merged.plazoMinimoDias)) {
+      return errorResponse(res, 'El plazo máximo no puede ser menor al plazo mínimo.', 400);
+    }
+
+    const anterior = product.get({ plain: true });
+    await product.update(data);
+
+    await logAudit({
+      req,
+      accion: 'EDITAR_INVERSION',
+      entidad: 'InvestmentProduct',
+      entidadId: product.id,
+      detalles: { anterior, cambios: data },
+    });
 
     return successResponse(res, { product }, 200, 'Producto de inversión actualizado.');
   } catch (error) {
@@ -450,6 +497,14 @@ async function deleteInvestmentProduct(req, res, next) {
 
     product.activo = false;
     await product.save();
+
+    await logAudit({
+      req,
+      accion: 'EDITAR_INVERSION',
+      entidad: 'InvestmentProduct',
+      entidadId: product.id,
+      detalles: { accion: 'Desactivación del producto', nombre: product.nombre },
+    });
 
     return successResponse(res, null, 200, 'Producto de inversión desactivado.');
   } catch (error) {
@@ -475,7 +530,19 @@ async function createRate(req, res, next) {
       );
     }
 
-    const todayStr = fechaVigencia || new Date().toISOString().split('T')[0];
+    const todayStr = fechaVigencia || todayISO();
+
+    const vigente = await CreditRate.findOne({
+      where: { creditTypeId, fechaFinVigencia: null },
+      order: [['fechaVigencia', 'DESC']],
+    });
+    if (vigente && todayStr < vigente.fechaVigencia) {
+      return errorResponse(
+        res,
+        `La nueva tasa no puede regir antes que la tasa vigente (desde ${vigente.fechaVigencia}).`,
+        400
+      );
+    }
 
     // Cerrar vigencia anterior
     await CreditRate.update(
@@ -515,7 +582,23 @@ async function updateRate(req, res, next) {
     const rate = await CreditRate.findByPk(id);
     if (!rate) return errorResponse(res, 'Registro de tasa no encontrado.', 404);
 
-    await rate.update(req.body);
+    // El histórico de tasas no se reescribe: para cambiar la tasa se registra una nueva vigencia.
+    // Solo se permite corregir la fuente o resolución que la respalda.
+    if (req.body.fuente === undefined) {
+      return errorResponse(res, 'Solo se puede corregir la fuente de la tasa. Para cambiarla registra una nueva tasa.', 400);
+    }
+
+    const fuenteAnterior = rate.fuente;
+    await rate.update({ fuente: String(req.body.fuente).trim() });
+
+    await logAudit({
+      req,
+      accion: 'CAMBIAR_TASA',
+      entidad: 'CreditRate',
+      entidadId: rate.id,
+      detalles: { fuenteAnterior, fuente: rate.fuente },
+    });
+
     return successResponse(res, { rate }, 200, 'Tasa actualizada.');
   } catch (error) {
     next(error);

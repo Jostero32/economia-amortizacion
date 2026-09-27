@@ -1,5 +1,8 @@
 const { Document, CreditApplication, InvestmentApplication } = require('../models');
 const { resolveDocumentPath } = require('../services/storage/documentStorage');
+
+// Una solicitud aprobada o rechazada ya no recibe documentos
+const CLOSED_STATUSES = ['APROBADA', 'RECHAZADA'];
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -20,20 +23,22 @@ async function uploadDocument(req, res, next) {
     }
 
     // Validar existencia de solicitud y pertenencia
+    let application;
     if (creditApplicationId) {
-      const app = await CreditApplication.findByPk(creditApplicationId);
-      if (!app) return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
-      if (req.user.rol === 'CLIENTE' && app.userId !== req.user.id) {
-        return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
-      }
+      application = await CreditApplication.findByPk(creditApplicationId);
+      if (!application) return errorResponse(res, 'Solicitud de crédito no encontrada.', 404);
     } else if (investmentApplicationId) {
-      const app = await InvestmentApplication.findByPk(investmentApplicationId);
-      if (!app) return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
-      if (req.user.rol === 'CLIENTE' && app.userId !== req.user.id) {
-        return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
-      }
+      application = await InvestmentApplication.findByPk(investmentApplicationId);
+      if (!application) return errorResponse(res, 'Solicitud de inversión no encontrada.', 404);
     } else {
       return errorResponse(res, 'Debe asociar el documento a una solicitud de crédito o inversión.', 400);
+    }
+
+    if (req.user.rol === 'CLIENTE' && application.userId !== req.user.id) {
+      return errorResponse(res, 'No tiene permiso para subir documentos a esta solicitud.', 403);
+    }
+    if (CLOSED_STATUSES.includes(application.estado)) {
+      return errorResponse(res, 'La solicitud ya fue resuelta; no se pueden agregar documentos.', 400);
     }
 
     const doc = await Document.create({

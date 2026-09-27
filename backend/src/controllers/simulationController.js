@@ -8,7 +8,7 @@ const {
   InvestmentSimulation,
   Institution,
 } = require('../models');
-const { quoteCredit, productSummary } = require('../services/credit/creditQuote');
+const { quoteCredit, productSummary, saveCreditSimulation } = require('../services/credit/creditQuote');
 const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const {
   generateCreditSimulationPDF,
@@ -26,30 +26,10 @@ async function simulateCredit(req, res, next) {
     const { result } = quote;
 
     // Guardar la simulación y su tabla de amortización
-    const savedSimulation = await CreditSimulation.create({
+    const savedSimulation = await saveCreditSimulation(result, {
       creditTypeId: quote.product.id,
       userId: req.user ? req.user.id : null,
-      monto: result.monto,
-      plazoMeses: result.plazoMeses,
-      sistemaAmortizacion: result.sistema,
-      tasaAnual: result.tasaAnual,
-      tasaNominal: result.tasaNominal,
-      tasaMensual: result.tasaMensual,
-      cuotaInicial: result.cuotaInicial,
-      totalCapital: result.totalCapital,
-      totalIntereses: result.totalIntereses,
-      totalCargos: result.totalCargos,
-      totalPagar: result.totalPagar,
-      cargosDesembolso: result.cargosDesembolso,
-      montoLiquido: result.montoLiquido,
-      costoEfectivoAnual: result.costoEfectivoAnual,
-      desgloseCargos: result.desgloseCargos,
-      fechaInicio: result.fechaInicio,
     });
-
-    await AmortizationRow.bulkCreate(
-      result.rows.map((row) => ({ ...row, simulationId: savedSimulation.id }))
-    );
 
     return successResponse(
       res,

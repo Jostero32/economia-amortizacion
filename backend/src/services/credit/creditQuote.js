@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { CreditType, CreditSegment, Charge } = require('../../models');
+const { CreditType, CreditSegment, Charge, CreditSimulation, AmortizationRow } = require('../../models');
 const { calculateAmortization } = require('../amortization');
 const { selectApplicableCharges, segmentRequiresLifeInsurance } = require('../amortization/charges');
 const { todayISO } = require('../../utils/dates');
@@ -87,7 +87,40 @@ function productSummary({ product, tasaMaximaBCE, requiereDesgravamen }) {
   };
 }
 
+/**
+ * Guarda una cotización como simulación con su tabla de amortización
+ * @param {Object} result - Resultado de calculateAmortization
+ * @param {Object} options - { creditTypeId, userId }
+ * @returns {Promise<Object>} Simulación guardada
+ */
+async function saveCreditSimulation(result, { creditTypeId, userId = null }) {
+  const simulation = await CreditSimulation.create({
+    creditTypeId,
+    userId,
+    monto: result.monto,
+    plazoMeses: result.plazoMeses,
+    sistemaAmortizacion: result.sistema,
+    tasaAnual: result.tasaAnual,
+    tasaNominal: result.tasaNominal,
+    tasaMensual: result.tasaMensual,
+    cuotaInicial: result.cuotaInicial,
+    totalCapital: result.totalCapital,
+    totalIntereses: result.totalIntereses,
+    totalCargos: result.totalCargos,
+    totalPagar: result.totalPagar,
+    cargosDesembolso: result.cargosDesembolso,
+    montoLiquido: result.montoLiquido,
+    costoEfectivoAnual: result.costoEfectivoAnual,
+    desgloseCargos: result.desgloseCargos,
+    fechaInicio: result.fechaInicio,
+  });
+
+  await AmortizationRow.bulkCreate(result.rows.map((row) => ({ ...row, simulationId: simulation.id })));
+  return simulation;
+}
+
 module.exports = {
   quoteCredit,
   productSummary,
+  saveCreditSimulation,
 };

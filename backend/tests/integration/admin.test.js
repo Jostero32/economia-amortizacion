@@ -134,7 +134,7 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.errors.length).toBeGreaterThan(0);
+      expect(Object.keys(res.body.errors).length).toBeGreaterThan(0);
     });
 
     test('ADMIN puede subir un logotipo institucional y se publica desde uploads', async () => {

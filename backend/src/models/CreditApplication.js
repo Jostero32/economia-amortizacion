@@ -113,6 +113,21 @@ const CreditApplication = sequelize.define('CreditApplication', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
   },
+  relacionCuotaIngreso: {
+    type: DataTypes.DECIMAL(6, 2),
+    allowNull: true,
+    comment: 'Cuota más alta / ingresos mensuales, en porcentaje (referencia: no superar 40 %)',
+  },
+  autorizaConsultaBuro: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Autorización del cliente para consultar su historial crediticio (LOPDP)',
+  },
+  fechaAutorizacionBuro: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   observacionAsesor: {
     type: DataTypes.TEXT,
     allowNull: true,
