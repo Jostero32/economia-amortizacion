@@ -90,7 +90,7 @@ export default function ClientDashboard() {
               <span className="font-badge-label text-[11px] text-on-surface-variant uppercase">
                 Mis Solicitudes
               </span>
-              <div className="font-numeric-hero text-[28px] text-primary font-bold">
+              <div className="font-numeric-hero leading-tight text-[28px] text-primary font-bold">
                 {totalApps}
               </div>
             </div>
@@ -106,7 +106,7 @@ export default function ClientDashboard() {
               <span className="font-badge-label text-[11px] text-on-surface-variant uppercase">
                 En Revisión / Pendiente
               </span>
-              <div className="font-numeric-hero text-[28px] text-amber-800 font-bold">
+              <div className="font-numeric-hero leading-tight text-[28px] text-amber-800 font-bold">
                 {pendingApps}
               </div>
             </div>
@@ -122,7 +122,7 @@ export default function ClientDashboard() {
               <span className="font-badge-label text-[11px] text-on-surface-variant uppercase">
                 Solicitudes Aprobadas
               </span>
-              <div className="font-numeric-hero text-[28px] text-emerald-800 font-bold">
+              <div className="font-numeric-hero leading-tight text-[28px] text-emerald-800 font-bold">
                 {approvedApps}
               </div>
             </div>

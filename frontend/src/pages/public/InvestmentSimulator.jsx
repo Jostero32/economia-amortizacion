@@ -329,7 +329,7 @@ export default function InvestmentSimulator() {
                   {monthlyPayments.length > 0 ? (
                     <>
                       <span className="text-[13px] text-gray-500 block">Recibirás cada mes</span>
-                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
+                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero leading-tight">
                         {formatMoney(monthlyNet)}
                       </div>
                       <span className="text-[13px] text-gray-500">
@@ -340,7 +340,7 @@ export default function InvestmentSimulator() {
                   ) : (
                     <>
                       <span className="text-[13px] text-gray-500 block">Recibirás al vencimiento</span>
-                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
+                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero leading-tight">
                         {formatMoney(simulation.valorFinal)}
                       </div>
                       <span className="text-[13px] text-gray-500">

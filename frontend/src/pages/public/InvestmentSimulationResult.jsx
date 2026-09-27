@@ -113,7 +113,7 @@ export default function InvestmentSimulationResult() {
           <span className="text-[13px] text-gray-500 block">
             {simulation.pagoIntereses === 'MENSUAL' ? 'Total que recibirás (capital e intereses netos)' : 'Recibirás al vencimiento'}
           </span>
-          <span className="text-[34px] font-bold text-primary font-numeric-hero">{formatMoney(simulation.valorFinal)}</span>
+          <span className="text-[34px] font-bold text-primary font-numeric-hero leading-tight">{formatMoney(simulation.valorFinal)}</span>
         </div>
         <div>
           <DetailRow label="Capital invertido" value={formatMoney(simulation.monto)} />

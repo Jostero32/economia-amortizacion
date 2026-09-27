@@ -103,7 +103,7 @@ export default function ApplicationDetail() {
             )}
             {application.autorizaConsultaBuro && (
               <p className="text-[12px] text-gray-500">
-                El cliente autorizó la consulta de su historial crediticio el {formatDateTime(application.fechaAutorizacionBuro)}.
+                Consulta del historial crediticio autorizada por el cliente: {formatDateTime(application.fechaAutorizacionBuro)}
               </p>
             )}
           </div>

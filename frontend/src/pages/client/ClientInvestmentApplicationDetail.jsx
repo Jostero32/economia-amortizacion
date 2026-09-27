@@ -93,7 +93,7 @@ export default function ClientInvestmentApplicationDetail() {
           <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-3">
             <div>
               <span className="text-[13px] text-gray-500 block">Recibirás al vencimiento</span>
-              <span className="text-[32px] font-bold text-primary font-numeric-hero">
+              <span className="text-[32px] font-bold text-primary font-numeric-hero leading-tight">
                 {formatMoney(application.valorFinalEstimado)}
               </span>
             </div>

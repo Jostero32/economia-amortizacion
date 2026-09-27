@@ -98,7 +98,7 @@ export default function AdminDashboard() {
               <span className="material-symbols-outlined text-[18px]">pending_actions</span>
             </div>
           </div>
-          <div className="font-numeric-hero text-[28px] text-amber-800 font-bold mt-2">
+          <div className="font-numeric-hero leading-tight text-[28px] text-amber-800 font-bold mt-2">
             {pendingApps}
           </div>
           <span className="font-body-sm text-[11px] text-on-surface-variant">
@@ -115,7 +115,7 @@ export default function AdminDashboard() {
               <span className="material-symbols-outlined text-[18px]">verified</span>
             </div>
           </div>
-          <div className="font-numeric-hero text-[28px] text-emerald-800 font-bold mt-2">
+          <div className="font-numeric-hero leading-tight text-[28px] text-emerald-800 font-bold mt-2">
             {approvedApps}
           </div>
           <span className="font-body-sm text-[11px] text-on-surface-variant">
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
               <span className="material-symbols-outlined text-[18px]">credit_card</span>
             </div>
           </div>
-          <div className="font-numeric-hero text-[28px] text-primary font-bold mt-2">
+          <div className="font-numeric-hero leading-tight text-[28px] text-primary font-bold mt-2">
             {creditProducts.length}
           </div>
           <span className="font-body-sm text-[11px] text-on-surface-variant">
@@ -149,7 +149,7 @@ export default function AdminDashboard() {
               <span className="material-symbols-outlined text-[18px]">savings</span>
             </div>
           </div>
-          <div className="font-numeric-hero text-[28px] text-primary font-bold mt-2">
+          <div className="font-numeric-hero leading-tight text-[28px] text-primary font-bold mt-2">
             {investmentProducts.length}
           </div>
           <span className="font-body-sm text-[11px] text-on-surface-variant">

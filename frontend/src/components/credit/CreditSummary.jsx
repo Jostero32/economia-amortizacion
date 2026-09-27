@@ -49,7 +49,7 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
         <span className="text-[13px] text-gray-500 block">
           {isGerman ? 'Primera cuota (luego disminuye cada mes)' : 'Cuota mensual fija'}
         </span>
-        <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
+        <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero leading-tight">
           {formatMoney(firstPayment)}
         </div>
         <span className="text-[13px] text-gray-500">

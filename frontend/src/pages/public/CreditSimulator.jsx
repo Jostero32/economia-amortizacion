@@ -508,7 +508,7 @@ export default function CreditSimulator() {
                   <th className="py-2 font-medium text-right">Cuota decreciente</th>
                 </tr>
               </thead>
-              <tbody className="font-numeric-data divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100">
                 {[
                   ['Primera cuota', 'primeraCuota'],
                   ['Última cuota', 'ultimaCuota'],
@@ -517,8 +517,8 @@ export default function CreditSimulator() {
                 ].map(([label, key]) => (
                   <tr key={key}>
                     <td className="py-2.5 text-gray-700">{label}</td>
-                    <td className="py-2.5 text-right text-primary">{formatMoney(comparison.frances[key])}</td>
-                    <td className="py-2.5 text-right text-primary">{formatMoney(comparison.aleman[key])}</td>
+                    <td className="py-2.5 text-right text-primary font-numeric-data">{formatMoney(comparison.frances[key])}</td>
+                    <td className="py-2.5 text-right text-primary font-numeric-data">{formatMoney(comparison.aleman[key])}</td>
                   </tr>
                 ))}
               </tbody>
