@@ -32,6 +32,26 @@ const additiveMigrations = [
       interesNeto: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
     },
   },
+  {
+    tableName: 'charges',
+    columns: {
+      categoria: {
+        type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS'),
+        allowNull: false,
+        defaultValue: 'GASTO_TERCEROS',
+      },
+      anualizarSiPlazoMenorAnio: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    },
+  },
+  {
+    tableName: 'credit_simulations',
+    columns: {
+      tasaNominal: { type: DataTypes.DECIMAL(8, 4), allowNull: true },
+      cargosDesembolso: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+      montoLiquido: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+      costoEfectivoAnual: { type: DataTypes.DECIMAL(8, 4), allowNull: true },
+    },
+  },
 ];
 
 async function runAdditiveMigrations(sequelize) {

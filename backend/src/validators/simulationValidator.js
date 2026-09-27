@@ -50,6 +50,13 @@ const validateCreditSimulation = [
     .bail()
     .custom(isTodayOrFutureDate)
     .withMessage('La fecha de inicio debe ser hoy o una fecha futura.'),
+  body('cargosOpcionales')
+    .optional()
+    .isArray()
+    .withMessage('Los cargos opcionales deben enviarse como una lista.'),
+  body('cargosOpcionales.*')
+    .isInt({ min: 1 })
+    .withMessage('Cada cargo opcional debe ser un identificador válido.'),
   validateResults,
 ];
 

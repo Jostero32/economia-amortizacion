@@ -11,6 +11,18 @@ const Charge = sequelize.define('Charge', {
     type: DataTypes.STRING(150),
     allowNull: false,
   },
+  categoria: {
+    type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS'),
+    allowNull: false,
+    defaultValue: 'GASTO_TERCEROS',
+    comment: 'Impuesto de ley (SOLCA), seguro de desgravamen, otro seguro o gasto a terceros. Las comisiones por conceder el crédito están prohibidas por ley.',
+  },
+  anualizarSiPlazoMenorAnio: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Si el plazo es menor a un año, el porcentaje se prorratea por días/360 (regla de la contribución SOLCA)',
+  },
   tipo: {
     type: DataTypes.ENUM('PORCENTAJE', 'VALOR_FIJO'),
     allowNull: false,

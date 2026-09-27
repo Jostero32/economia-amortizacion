@@ -1,6 +1,8 @@
 const { calculateFrenchAmortization } = require('./french');
 const { calculateGermanAmortization } = require('./german');
 const { todayISO, toISODate } = require('../../utils/dates');
+const { roundToTwo } = require('../../utils/money');
+const { calculateDisbursementCharges } = require('./charges');
 
 /**
  * Convierte una Tasa Efectiva Anual (TEA) a Tasa Periódica Mensual
@@ -49,14 +51,46 @@ function nominalToEffectiveRate(nominalRate, days = 30) {
 }
 
 /**
+ * Costo efectivo anual para el cliente (informativo).
+ *
+ * Es la TIR mensual de los flujos reales -lo que recibe al desembolso y lo que paga en cada
+ * cuota, incluidos seguros e impuestos- expresada en términos anuales: (1 + TIR)^12 - 1.
+ * A diferencia de la TEA legal, incluye SOLCA y seguros, por eso es mayor.
+ *
+ * @param {number} montoLiquido - Valor entregado al cliente
+ * @param {Array<number>} pagos - Pago total de cada cuota
+ * @returns {number} Porcentaje anual
+ */
+function calculateAnnualCostRate(montoLiquido, pagos) {
+  const npv = (rate) => pagos.reduce(
+    (sum, pago, index) => sum - pago / Math.pow(1 + rate, index + 1),
+    montoLiquido
+  );
+
+  // Si lo pagado no supera lo recibido, el costo es nulo
+  if (npv(0) >= 0) return 0;
+
+  let low = 0;
+  let high = 0.1;
+  while (npv(high) < 0 && high < 100) high *= 2;
+
+  for (let iteration = 0; iteration < 200; iteration++) {
+    const mid = (low + high) / 2;
+    if (npv(mid) < 0) low = mid;
+    else high = mid;
+  }
+  return (Math.pow(1 + (low + high) / 2, 12) - 1) * 100;
+}
+
+/**
  * Orquestador de amortización financiera
  * @param {Object} params
  * @param {number} params.amount - Monto del crédito
  * @param {number} params.termMonths - Plazo en meses
- * @param {number} params.annualRate - Tasa activa efectiva anual (porcentaje, ej: 15.74)
+ * @param {number} params.annualRate - Tasa activa efectiva anual (TEA, porcentaje, ej: 15.74)
  * @param {string} params.system - 'FRANCES' o 'ALEMAN'
- * @param {string|Date} [params.startDate] - Fecha de inicio
- * @param {Array} [params.charges] - Lista de cobros adicionales configurados
+ * @param {string} [params.startDate] - Fecha de desembolso (YYYY-MM-DD), por defecto hoy en Ecuador
+ * @param {Array} [params.charges] - Cargos que aplican a la operación (ver ./charges.js)
  * @returns {Object} Resultado de la simulación
  */
 function calculateAmortization({
@@ -90,29 +124,36 @@ function calculateAmortization({
   // Conversión formal de tasa efectiva anual a mensual
   const monthlyRate = annualEffectiveToMonthlyRate(tasaAnual);
 
-  let simulationResult;
-  if (sysUpper === 'FRANCES') {
-    simulationResult = calculateFrenchAmortization({
-      principal,
-      monthlyRate,
-      termMonths: n,
-      startDate: fechaInicio,
-      charges,
-    });
-  } else {
-    simulationResult = calculateGermanAmortization({
-      principal,
-      monthlyRate,
-      termMonths: n,
-      startDate: fechaInicio,
-      charges,
-    });
-  }
+  const calculate = sysUpper === 'FRANCES' ? calculateFrenchAmortization : calculateGermanAmortization;
+  const simulationResult = calculate({
+    principal,
+    monthlyRate,
+    termMonths: n,
+    startDate: fechaInicio,
+    charges,
+  });
+
+  // Cargos al desembolso (SOLCA, gastos a terceros): se descuentan del monto entregado
+  const cargosDesembolsoDetalle = calculateDisbursementCharges(charges, { principal, termMonths: n });
+  const cargosDesembolso = roundToTwo(
+    cargosDesembolsoDetalle.reduce((sum, cargo) => sum + cargo.valor, 0)
+  );
+  const montoLiquido = roundToTwo(principal - cargosDesembolso);
 
   return {
     ...simulationResult,
+    // Cargos periódicos + cargos al desembolso
+    totalCargos: roundToTwo(simulationResult.totalCargos + cargosDesembolso),
+    cargosDesembolso,
+    montoLiquido,
+    desgloseCargos: [...cargosDesembolsoDetalle, ...simulationResult.cargosPeriodicos],
     tasaAnual,
+    tasaNominal: effectiveToNominalRate(tasaAnual, 30),
     tasaMensual: monthlyRate,
+    costoEfectivoAnual: calculateAnnualCostRate(
+      montoLiquido,
+      simulationResult.rows.map((row) => row.totalPago)
+    ),
     fechaInicio,
   };
 }
@@ -121,5 +162,6 @@ module.exports = {
   annualEffectiveToMonthlyRate,
   effectiveToNominalRate,
   nominalToEffectiveRate,
+  calculateAnnualCostRate,
   calculateAmortization,
 };

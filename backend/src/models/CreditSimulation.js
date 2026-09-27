@@ -41,6 +41,11 @@ const CreditSimulation = sequelize.define('CreditSimulation', {
     allowNull: false,
     comment: 'Tasa efectiva anual aplicada en porcentaje ej: 15.74',
   },
+  tasaNominal: {
+    type: DataTypes.DECIMAL(8, 4),
+    allowNull: true,
+    comment: 'Tasa nominal anual equivalente con pagos mensuales (BCE, Anexo 1)',
+  },
   tasaMensual: {
     type: DataTypes.DECIMAL(8, 6),
     allowNull: false,
@@ -66,6 +71,21 @@ const CreditSimulation = sequelize.define('CreditSimulation', {
   totalPagar: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
+  },
+  cargosDesembolso: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Cargos retenidos al desembolso (SOLCA, gastos a terceros)',
+  },
+  montoLiquido: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Valor que recibe el cliente: monto - cargos al desembolso',
+  },
+  costoEfectivoAnual: {
+    type: DataTypes.DECIMAL(8, 4),
+    allowNull: true,
+    comment: 'Costo anual para el cliente incluyendo seguros e impuestos (TIR de los flujos, informativo)',
   },
   desgloseCargos: {
     type: DataTypes.JSON,

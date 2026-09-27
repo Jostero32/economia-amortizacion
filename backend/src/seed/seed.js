@@ -187,38 +187,57 @@ async function seedDatabase() {
   console.log('[Seed] Productos de crédito y tasas históricas asegurados.');
 
   // 5. Cobros Adicionales (SOLCA y Desgravamen)
-  const solcaExists = await Charge.findOne({ where: { nombre: 'Contribución SOLCA' } });
-  if (!solcaExists) {
-    await Charge.create({
-      nombre: 'Contribución SOLCA',
-      tipo: 'PORCENTAJE',
-      valor: 0.00,
-      porcentaje: 0.5000, // 0.50%
-      baseCalculo: 'MONTO_OPERACION',
-      aplicacion: 'UNA_VEZ',
-      obligatorio: true,
-      creditTypeId: null, // Aplica a todos los créditos
-      descripcion: 'Contribución del 0,5% sobre la operación de crédito, conforme al marco legal aplicable.',
-      activo: true,
+  const solcaData = {
+    nombre: 'Contribución SOLCA',
+    categoria: 'IMPUESTO',
+    tipo: 'PORCENTAJE',
+    valor: 0.00,
+    porcentaje: 0.5000, // 0.50%
+    baseCalculo: 'MONTO_OPERACION',
+    aplicacion: 'UNA_VEZ', // Retenida al desembolso
+    anualizarSiPlazoMenorAnio: true,
+    obligatorio: true,
+    creditTypeId: null, // Aplica a todos los créditos
+    descripcion: 'Contribución del 0,5 % sobre el monto del crédito, retenida al desembolso. Si el plazo es menor a un año se calcula de forma anualizada (monto × 0,5 % × días/360).',
+    activo: true,
+  };
+  const solca = await Charge.findOne({ where: { nombre: solcaData.nombre } });
+  if (!solca) {
+    await Charge.create(solcaData);
+    console.log('[Seed] Cobro "Contribución SOLCA" (0.50% al desembolso) registrado.');
+  } else if (solca.categoria !== 'IMPUESTO') {
+    // Bases creadas antes de clasificar los cargos
+    await solca.update({
+      categoria: 'IMPUESTO',
+      anualizarSiPlazoMenorAnio: true,
+      descripcion: solcaData.descripcion,
     });
-    console.log('[Seed] Cobro "Contribución SOLCA" (0.50% una sola vez) registrado.');
+    console.log('[Seed] Cobro "Contribución SOLCA" clasificado como impuesto de ley anualizable.');
   }
 
-  const desgravamenExists = await Charge.findOne({ where: { nombre: 'Seguro de Desgravamen' } });
-  if (!desgravamenExists) {
-    await Charge.create({
-      nombre: 'Seguro de Desgravamen',
-      tipo: 'PORCENTAJE',
-      valor: 0.00,
-      porcentaje: 0.0500, // 0.05% mensual sobre saldo insoluto
-      baseCalculo: 'SALDO_INSOLUTO',
-      aplicacion: 'MENSUAL',
-      obligatorio: false,
-      creditTypeId: null,
-      descripcion: 'Seguro de desgravamen configurable para protección del crédito en caso de fallecimiento (Valor demostrativo).',
-      activo: true,
-    });
+  const desgravamenData = {
+    nombre: 'Seguro de Desgravamen',
+    categoria: 'SEGURO_DESGRAVAMEN',
+    tipo: 'PORCENTAJE',
+    valor: 0.00,
+    porcentaje: 0.0500, // 0.05% mensual sobre saldo insoluto
+    baseCalculo: 'SALDO_INSOLUTO',
+    aplicacion: 'MENSUAL',
+    obligatorio: false, // Opcional salvo en créditos de vivienda
+    creditTypeId: null,
+    descripcion: 'Prima mensual sobre el saldo de capital (valor demostrativo). Obligatorio en créditos de vivienda; en los demás lo decide el cliente.',
+    activo: true,
+  };
+  const desgravamen = await Charge.findOne({ where: { nombre: desgravamenData.nombre } });
+  if (!desgravamen) {
+    await Charge.create(desgravamenData);
     console.log('[Seed] Cobro "Seguro de Desgravamen" configurable registrado.');
+  } else if (desgravamen.categoria !== 'SEGURO_DESGRAVAMEN') {
+    await desgravamen.update({
+      categoria: 'SEGURO_DESGRAVAMEN',
+      descripcion: desgravamenData.descripcion,
+    });
+    console.log('[Seed] Cobro "Seguro de Desgravamen" clasificado como seguro de desgravamen.');
   }
 
   // 6. Inversiones a Plazo Fijo y Tasas BCE

@@ -11,10 +11,12 @@
  * - Amortización a capital constante
  * - Interés decreciente en cada período
  * - Cuota total decreciente mes a mes
+ * - La última cuota absorbe la diferencia de redondeo del capital constante
  */
 
 const { roundToTwo } = require('../../utils/money');
 const { addMonthsClamped, todayISO } = require('../../utils/dates');
+const { createPeriodicChargesAccumulator } = require('./charges');
 
 /**
  * Calcula la tabla de amortización bajo el sistema Alemán
@@ -22,8 +24,8 @@ const { addMonthsClamped, todayISO } = require('../../utils/dates');
  * @param {number} params.principal - Monto original del crédito
  * @param {number} params.monthlyRate - Tasa periódica mensual en decimal (ej: 0.0122)
  * @param {number} params.termMonths - Plazo en meses
- * @param {string|Date} params.startDate - Fecha de inicio del crédito
- * @param {Array} params.charges - Lista de cargos adicionales aplicables
+ * @param {string} params.startDate - Fecha de desembolso (YYYY-MM-DD)
+ * @param {Array} params.charges - Cargos aplicables; solo se usan los que se cobran en cada cuota
  * @returns {Object} Resumen y detalle de cuotas
  */
 function calculateGermanAmortization({ principal, monthlyRate, termMonths, startDate, charges = [] }) {
@@ -49,31 +51,10 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
   let totalCapital = 0;
   let totalIntereses = 0;
   let totalCargos = 0;
+  let totalPagar = 0;
 
   const fechaBase = startDate || todayISO();
-
-  // Desglose de cargos
-  const desgloseCargos = [];
-  charges.forEach(charge => {
-    let valorCalculado = 0;
-    const porcentaje = Number(charge.porcentaje || 0) / 100;
-    const valorFijo = Number(charge.valor || 0);
-
-    if (charge.tipo === 'PORCENTAJE') {
-      valorCalculado = roundToTwo(P * porcentaje);
-    } else {
-      valorCalculado = roundToTwo(valorFijo);
-    }
-
-    desgloseCargos.push({
-      id: charge.id,
-      nombre: charge.nombre,
-      tipo: charge.tipo,
-      aplicacion: charge.aplicacion,
-      valor: valorCalculado,
-      porcentaje: charge.porcentaje,
-    });
-  });
+  const periodicCharges = createPeriodicChargesAccumulator(charges);
 
   for (let k = 1; k <= n; k++) {
     // Mismo día cada mes (o el último día si el mes es más corto)
@@ -99,31 +80,13 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
       saldoFinal = roundToTwo(saldoInicial - capital);
     }
 
-    // Cargos de esta cuota
-    let cargosCuota = 0;
-    charges.forEach(charge => {
-      const porcentaje = Number(charge.porcentaje || 0) / 100;
-      const valorFijo = Number(charge.valor || 0);
-
-      if (charge.aplicacion === 'UNA_VEZ') {
-        if (k === 1) {
-          cargosCuota += (charge.tipo === 'PORCENTAJE') ? roundToTwo(P * porcentaje) : roundToTwo(valorFijo);
-        }
-      } else if (charge.aplicacion === 'POR_CUOTA' || charge.aplicacion === 'MENSUAL') {
-        if (charge.baseCalculo === 'SALDO_INSOLUTO') {
-          cargosCuota += (charge.tipo === 'PORCENTAJE') ? roundToTwo(saldoInicial * porcentaje) : roundToTwo(valorFijo);
-        } else {
-          cargosCuota += (charge.tipo === 'PORCENTAJE') ? roundToTwo((P / n) * porcentaje) : roundToTwo(valorFijo);
-        }
-      }
-    });
-
-    cargosCuota = roundToTwo(cargosCuota);
+    const cargosCuota = periodicCharges.forInstallment({ principal: P, saldoInicial, cuota });
     const totalPago = roundToTwo(cuota + cargosCuota);
 
     totalCapital = roundToTwo(totalCapital + capital);
     totalIntereses = roundToTwo(totalIntereses + interes);
     totalCargos = roundToTwo(totalCargos + cargosCuota);
+    totalPagar = roundToTwo(totalPagar + totalPago);
 
     rows.push({
       numeroCuota: k,
@@ -140,8 +103,6 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
     saldoInicial = saldoFinal;
   }
 
-  const totalPagar = roundToTwo(totalCapital + totalIntereses + totalCargos);
-
   return {
     sistema: 'ALEMAN',
     monto: P,
@@ -151,7 +112,7 @@ function calculateGermanAmortization({ principal, monthlyRate, termMonths, start
     totalIntereses,
     totalCargos,
     totalPagar,
-    desgloseCargos,
+    cargosPeriodicos: periodicCharges.summary(),
     rows,
   };
 }

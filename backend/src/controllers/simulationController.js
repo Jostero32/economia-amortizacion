@@ -10,6 +10,10 @@ const {
   Institution,
 } = require('../models');
 const { calculateAmortization } = require('../services/amortization');
+const {
+  selectApplicableCharges,
+  segmentRequiresLifeInsurance,
+} = require('../services/amortization/charges');
 const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const {
   generateCreditSimulationPDF,
@@ -24,7 +28,7 @@ const { todayISO } = require('../utils/dates');
  */
 async function simulateCredit(req, res, next) {
   try {
-    const { creditTypeId, amount, termMonths, amortizationSystem, startDate } = req.body;
+    const { creditTypeId, amount, termMonths, amortizationSystem, startDate, cargosOpcionales } = req.body;
 
     // 1. Obtener producto de crédito y su segmento regulatorio
     const product = await CreditType.findByPk(creditTypeId, {
@@ -73,8 +77,9 @@ async function simulateCredit(req, res, next) {
       );
     }
 
-    // 4. Obtener cargos aplicables (generales y específicos de este producto)
-    const charges = await Charge.findAll({
+    // 4. Cargos activos (generales y específicos de este producto). Los opcionales solo se
+    // aplican si el cliente los acepta; el desgravamen es obligatorio en créditos de vivienda.
+    const activeCharges = await Charge.findAll({
       where: {
         activo: true,
         [Op.or]: [
@@ -82,6 +87,10 @@ async function simulateCredit(req, res, next) {
           { creditTypeId: product.id },
         ],
       },
+    });
+    const charges = selectApplicableCharges(activeCharges.map((charge) => charge.get({ plain: true })), {
+      acceptedOptionalIds: cargosOpcionales,
+      requiresLifeInsurance: segmentRequiresLifeInsurance(product.segment.codigo),
     });
 
     // 5. Ejecutar cálculo financiero puro en el servicio
@@ -104,12 +113,16 @@ async function simulateCredit(req, res, next) {
       plazoMeses: simulationResult.plazoMeses,
       sistemaAmortizacion: simulationResult.sistema,
       tasaAnual: simulationResult.tasaAnual,
+      tasaNominal: simulationResult.tasaNominal,
       tasaMensual: simulationResult.tasaMensual,
       cuotaInicial: simulationResult.cuotaInicial,
       totalCapital: simulationResult.totalCapital,
       totalIntereses: simulationResult.totalIntereses,
       totalCargos: simulationResult.totalCargos,
       totalPagar: simulationResult.totalPagar,
+      cargosDesembolso: simulationResult.cargosDesembolso,
+      montoLiquido: simulationResult.montoLiquido,
+      costoEfectivoAnual: simulationResult.costoEfectivoAnual,
       desgloseCargos: simulationResult.desgloseCargos,
       fechaInicio: simulationResult.fechaInicio,
     });
@@ -132,6 +145,7 @@ async function simulateCredit(req, res, next) {
           nombre: product.nombre,
           segmento: product.segment.nombre,
           tasaMaximaBCE,
+          requiereDesgravamen: segmentRequiresLifeInsurance(product.segment.codigo),
         },
       },
       201,

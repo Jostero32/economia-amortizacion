@@ -110,6 +110,45 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
       const cargoSolca = sim.desgloseCargos.find(c => c.nombre.includes('SOLCA'));
       expect(cargoSolca).toBeDefined();
       expect(Number(cargoSolca.valor)).toBe(50.00);
+      expect(cargoSolca.momento).toBe('DESEMBOLSO');
+
+      // SOLCA se retiene al desembolso: el cliente recibe 9,950 USD y no se suma a la primera cuota
+      expect(Number(sim.cargosDesembolso)).toBe(50.00);
+      expect(Number(sim.montoLiquido)).toBe(9950.00);
+      expect(Number(rows[0].totalPago)).toBe(Number(rows[0].cuota) + Number(rows[0].cargos));
+
+      // Tasa nominal equivalente con pagos mensuales (BCE, Anexo 1)
+      expect(Number(sim.tasaNominal)).toBeCloseTo(14.707, 2);
+    });
+
+    test('el cliente puede excluir el seguro de desgravamen opcional en consumo', async () => {
+      const base = { creditTypeId: creditoConsumo.id, amount: 10000, termMonths: 12, amortizationSystem: 'FRANCES' };
+
+      const conSeguro = await request(app).post('/api/simulations/credits').send(base);
+      const sinSeguro = await request(app).post('/api/simulations/credits').send({ ...base, cargosOpcionales: [] });
+
+      expect(sinSeguro.status).toBe(201);
+      const nombresSin = sinSeguro.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombresSin).not.toContain('Seguro de Desgravamen');
+      expect(Number(sinSeguro.body.data.rows[0].cargos)).toBe(0);
+      expect(Number(conSeguro.body.data.rows[0].cargos)).toBeGreaterThan(0);
+      expect(conSeguro.body.data.product.requiereDesgravamen).toBe(false);
+    });
+
+    test('en el crédito inmobiliario el desgravamen se cobra aunque el cliente no lo marque', async () => {
+      const inmobiliario = await CreditType.findOne({ where: { nombre: 'Crédito Inmobiliario' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: inmobiliario.id,
+        amount: 30000,
+        termMonths: 120,
+        amortizationSystem: 'FRANCES',
+        cargosOpcionales: [],
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.product.requiereDesgravamen).toBe(true);
+      const nombres = res.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombres).toContain('Seguro de Desgravamen');
     });
   });
 
