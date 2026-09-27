@@ -138,7 +138,7 @@ export default function InvestmentCatalog() {
                 {/* Nivel 3: Garantía y Beneficios */}
                 <div className="text-[12px] text-gray-500 pt-2 border-t border-gray-100 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px] text-emerald-600">verified_user</span>
-                  <span>Seguro COSEDE hasta 2.000 • Sin retención de IR desde 180 días</span>
+                  <span>Seguro COSEDE hasta $32.000 • Sin retención de IR desde 180 días</span>
                 </div>
               </div>
 

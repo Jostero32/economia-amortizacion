@@ -20,8 +20,8 @@ const MAX_TERM_CHIPS = 6;
 const MAX_START_DAYS = 90;
 
 const SYSTEMS = [
-  { value: 'FRANCES', title: 'Cuota fija', detail: 'Pagas lo mismo cada mes (sistema francés).' },
-  { value: 'ALEMAN', title: 'Cuota decreciente', detail: 'Empiezas pagando más y la cuota baja cada mes (sistema alemán).' },
+  { value: 'FRANCES', title: 'Cuota fija', detail: 'Pagas lo mismo en cada cuota (sistema francés).' },
+  { value: 'ALEMAN', title: 'Cuota decreciente', detail: 'Empiezas pagando más y la cuota baja en cada pago (sistema alemán).' },
 ];
 
 function termChips(product, monthsPerPeriod = 1) {
@@ -286,7 +286,7 @@ export default function CreditSimulator() {
         </div>
         <h1 className="text-[28px] sm:text-[32px] font-bold text-primary tracking-tight">Simulador de crédito</h1>
         <p className="text-[15px] text-on-surface-variant mt-1">
-          Calcula tu cuota mensual y cuánto pagarás en total.
+          Calcula tu cuota y cuánto pagarás en total.
         </p>
       </div>
 
