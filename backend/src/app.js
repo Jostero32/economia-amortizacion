@@ -45,8 +45,12 @@ app.use(cookieParser());
 
 // Los documentos de las solicitudes solo se entregan por /api/documents/:id con control de acceso
 app.use('/uploads/documentos', notFoundHandler);
-// Estáticos públicos de uploads (logotipo institucional)
-app.use('/uploads', express.static(UPLOADS_DIR, { index: false, dotfiles: 'deny' }));
+app.use('/api/uploads/documentos', notFoundHandler);
+// Estáticos públicos de uploads (logotipo institucional). También bajo /api: detrás de un proxy
+// con prefijo (p. ej. /economia/simulador/api) solo las rutas /api llegan al backend.
+const publicUploads = express.static(UPLOADS_DIR, { index: false, dotfiles: 'deny' });
+app.use('/uploads', publicUploads);
+app.use('/api/uploads', publicUploads);
 
 // Endpoint de verificación de salud
 app.get('/api/health', (req, res) => {

@@ -2,7 +2,7 @@ import React from 'react';
 import { formatMoney, formatDate } from '../../utils/format';
 
 /**
- * Tabla de amortización: capital, interés y seguros de cada cuota por separado,
+ * Tabla de amortización: capital, interés y seguros/otros cargos de cada cuota por separado,
  * como exige la Superintendencia de Bancos en la información previa al crédito.
  */
 export default function AmortizationTable({ rows = [], simulation }) {
@@ -19,7 +19,7 @@ export default function AmortizationTable({ rows = [], simulation }) {
             <th className="py-3 px-3 text-right font-semibold">Saldo inicial</th>
             <th className="py-3 px-3 text-right font-semibold">Capital</th>
             <th className="py-3 px-3 text-right font-semibold">Interés</th>
-            {hasCharges && <th className="py-3 px-3 text-right font-semibold">Seguros</th>}
+            {hasCharges && <th className="py-3 px-3 text-right font-semibold">Seguros y otros cargos</th>}
             <th className="py-3 px-3 text-right font-bold text-white">Cuota a pagar</th>
             <th className="py-3 px-3 text-right font-semibold">Saldo final</th>
           </tr>
@@ -48,6 +48,11 @@ export default function AmortizationTable({ rows = [], simulation }) {
             <td className="py-3 px-3 text-right">{formatMoney(0)}</td>
           </tr>
         </tfoot>
+        {simulation?.sistemaAmortizacion === 'ALEMAN' && (
+          <caption className="caption-bottom py-2 px-3 text-left text-[12px] text-gray-500">
+            La última cuota ajusta los centavos de redondeo del abono a capital.
+          </caption>
+        )}
       </table>
     </div>
   );

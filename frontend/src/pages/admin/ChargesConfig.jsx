@@ -15,6 +15,7 @@ const CATEGORY_OPTIONS = [
   { value: 'SEGURO_DESGRAVAMEN', label: 'Seguro de desgravamen' },
   { value: 'SEGURO', label: 'Otro seguro (incendio, vehículo)' },
   { value: 'GASTO_TERCEROS', label: 'Gasto a terceros (avalúo, notaría)' },
+  { value: 'DONACION', label: 'Donación (siempre voluntaria)' },
 ];
 
 const CATEGORY_LABELS = {
@@ -22,6 +23,7 @@ const CATEGORY_LABELS = {
   SEGURO_DESGRAVAMEN: 'Seguro de desgravamen',
   SEGURO: 'Seguro',
   GASTO_TERCEROS: 'Gasto a terceros',
+  DONACION: 'Donación',
 };
 
 const BASE_LABELS = {
@@ -106,7 +108,12 @@ export default function ChargesConfig() {
   }, []);
 
   const updateField = (field, value) => {
-    setFormData((current) => ({ ...current, [field]: value }));
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+      // Una donación nunca puede ser obligatoria
+      ...(field === 'categoria' && value === 'DONACION' ? { obligatorio: false } : {}),
+    }));
     setFieldErrors((current) => ({ ...current, [field]: undefined }));
   };
 
@@ -393,6 +400,7 @@ export default function ChargesConfig() {
               <input
                 type="checkbox"
                 checked={formData.obligatorio}
+                disabled={formData.categoria === 'DONACION'}
                 onChange={(e) => updateField('obligatorio', e.target.checked)}
                 className="h-4 w-4 mt-0.5 accent-secondary"
               />

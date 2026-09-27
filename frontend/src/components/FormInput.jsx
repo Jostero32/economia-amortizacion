@@ -59,6 +59,8 @@ export default function FormInput({
               value={value}
               onChange={onChange}
               disabled={disabled}
+              required={required}
+              aria-invalid={error ? true : undefined}
               className={`${baseInputStyles} ${stateStyles} px-3.5 pr-10 appearance-none cursor-pointer ${inputClassName}`}
               {...props}
             >
@@ -80,6 +82,8 @@ export default function FormInput({
             onChange={onChange}
             placeholder={placeholder}
             disabled={disabled}
+            required={required}
+            aria-invalid={error ? true : undefined}
             rows={rows}
             className={`block w-full rounded-lg border text-body-md transition-colors p-3 focus:outline-none ${stateStyles} ${inputClassName}`}
             {...props}
@@ -93,6 +97,8 @@ export default function FormInput({
             onChange={onChange}
             placeholder={placeholder}
             disabled={disabled}
+            required={required}
+            aria-invalid={error ? true : undefined}
             className={`${baseInputStyles} ${stateStyles} ${
               prefix ? 'pl-8' : iconName ? 'pl-10' : 'px-3.5'
             } ${suffix ? 'pr-12' : 'pr-3.5'} ${inputClassName}`}

@@ -12,6 +12,7 @@ import AmortizationTable from '../../components/credit/AmortizationTable';
 import { todayISO, addDaysISO } from '../../utils/dates';
 import { formatMoney, formatMoneyWhole, formatPercent } from '../../utils/format';
 import { FREQUENCY_ORDER, getFrequency } from '../../utils/frequencies';
+import { effectiveToNominalRate } from '../../utils/rates';
 
 // Plazos habituales en meses; se muestran los que caben en el rango del producto
 const TERM_OPTIONS = [6, 12, 18, 24, 36, 48, 60, 72, 120, 180, 240];
@@ -43,9 +44,12 @@ function validate(form, product) {
   if (!product) return errors;
   const today = todayISO();
 
-  if (String(form.amount).trim() === '') {
+  const amountText = String(form.amount).trim();
+  if (amountText === '') {
     errors.amount = 'Ingresa el monto que necesitas.';
-  } else if (!/^\d+(\.\d{1,2})?$/.test(String(form.amount).trim())) {
+  } else if (Number.isFinite(Number(amountText)) && Number(amountText) < 0) {
+    errors.amount = 'El monto debe ser mayor a $0.';
+  } else if (!/^\d+(\.\d{1,2})?$/.test(amountText)) {
     errors.amount = 'Ingresa un monto válido, sin letras y con máximo 2 decimales.';
   } else if (Number(form.amount) < Number(product.montoMinimo)) {
     errors.amount = `El monto mínimo para este crédito es ${formatMoneyWhole(product.montoMinimo)}.`;
@@ -53,9 +57,12 @@ function validate(form, product) {
     errors.amount = `El monto máximo para este crédito es ${formatMoneyWhole(product.montoMaximo)}.`;
   }
 
-  if (String(form.termMonths).trim() === '') {
+  const termText = String(form.termMonths).trim();
+  if (termText === '') {
     errors.termMonths = 'Ingresa el plazo en meses.';
-  } else if (!/^\d+$/.test(String(form.termMonths).trim())) {
+  } else if (Number.isFinite(Number(termText)) && Number(termText) <= 0) {
+    errors.termMonths = 'El plazo debe ser mayor a 0 meses.';
+  } else if (!/^\d+$/.test(termText)) {
     errors.termMonths = 'El plazo debe ser un número entero de meses.';
   } else if (Number(form.termMonths) < product.plazoMinimo || Number(form.termMonths) > product.plazoMaximo) {
     errors.termMonths = `El plazo debe estar entre ${product.plazoMinimo} y ${product.plazoMaximo} meses.`;
@@ -309,7 +316,8 @@ export default function CreditSimulator() {
               options={products.map((p) => ({ value: String(p.id), label: p.nombre }))}
             />
             <p className="text-[12px] text-gray-500">
-              Tasa efectiva anual: <strong className="text-secondary">{formatPercent(product.tasaInstitucion)}</strong>
+              Tasa efectiva anual (TEA): <strong className="text-secondary">{formatPercent(product.tasaInstitucion)}</strong>
+              {' · '}nominal anual equivalente: {formatPercent(effectiveToNominalRate(product.tasaInstitucion))}
             </p>
           </div>
 
@@ -535,7 +543,10 @@ export default function CreditSimulator() {
       {simulation && showTable && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-3">
           <h2 className="text-[17px] font-bold text-primary">Tabla de amortización</h2>
-          <AmortizationTable rows={rows} simulation={simulation} />
+          {isStale && <Alert type="warning">Esta tabla corresponde a la simulación anterior. Pulsa «Simular» para actualizarla.</Alert>}
+          <div className={isStale ? 'opacity-60' : ''}>
+            <AmortizationTable rows={rows} simulation={simulation} />
+          </div>
           <p className="text-[12px] text-gray-500">
             Valores referenciales calculados con base comercial de 360 días. Las condiciones finales se
             confirman al aprobar el crédito.

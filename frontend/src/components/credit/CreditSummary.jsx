@@ -21,7 +21,7 @@ function Row({ label, value, hint, strong = false, negative = false }) {
 
 /**
  * Resumen del crédito con la información que un banco entrega antes de contratar:
- * cuota, valor a recibir, tasa nominal y efectiva, intereses, seguros y costo total.
+ * cuota, valor a recibir, tasa nominal, efectiva y del período, intereses, seguros y costo total.
  */
 export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) {
   const tea = Number(simulation.tasaAnual);
@@ -37,7 +37,9 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
   const disbursementNames = desglose
     .filter((cargo) => cargo.momento === 'DESEMBOLSO' && Number(cargo.valor) > 0)
     .map((cargo) => cargo.nombre);
+  const periodicCharges = desglose.filter((cargo) => cargo.momento === 'CUOTA' && Number(cargo.valor) > 0);
   const insuranceTotal = rows.reduce((total, row) => total + Number(row.cargos || 0), 0);
+  const periodRate = simulation.tasaPeriodica != null ? Number(simulation.tasaPeriodica) : null;
 
   const firstPayment = Number(rows[0]?.totalPago ?? simulation.cuotaInicial);
   const firstInsurance = Number(rows[0]?.cargos || 0);
@@ -62,7 +64,7 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
         <span className="text-[13px] text-gray-500">
           {cuotas} cuotas {frecuencia.plural}
           {rows[0] && ` · primer pago el ${formatDate(rows[0].fechaPago)}`}
-          {firstInsurance > 0 && ` · incluye ${formatMoney(firstInsurance)} de seguro`}
+          {firstInsurance > 0 && ` · incluye ${formatMoney(firstInsurance)} de seguros y otros cargos`}
         </span>
       </div>
 
@@ -87,8 +89,21 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
           hint={tasaMaximaBCE ? `Máximo permitido por el BCE: ${formatPercent(tasaMaximaBCE)}` : undefined}
           value={formatPercent(tea)}
         />
+        {periodRate != null && (
+          <Row
+            label={`Tasa del período (${frecuencia.cuota})`}
+            hint="(1 + TEA)^(días/360) − 1: es la que se aplica al saldo en cada cuota"
+            value={formatPercent(periodRate * 100, 4)}
+          />
+        )}
         <Row label="Total de intereses" value={formatMoney(simulation.totalIntereses)} />
-        {insuranceTotal > 0 && <Row label="Total de seguros" value={formatMoney(insuranceTotal)} />}
+        {insuranceTotal > 0 && (
+          <Row
+            label="Seguros y otros cargos"
+            hint={periodicCharges.map((cargo) => `${cargo.nombre}: ${formatMoney(cargo.valor)}`).join(' · ') || undefined}
+            value={formatMoney(insuranceTotal)}
+          />
+        )}
         {simulation.polizaDesgravamenPropia && (
           <Row label="Seguro de desgravamen" hint="Endosarás tu propia póliza a favor de la institución" value="Póliza propia" />
         )}

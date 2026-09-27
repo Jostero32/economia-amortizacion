@@ -117,6 +117,9 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
 
     const rootRes = await request(app).get(`/uploads/${doc.ruta}`);
     expect(rootRes.status).toBe(404);
+
+    const apiPrivateRes = await request(app).get(`/api/uploads/documentos/${doc.ruta}`);
+    expect(apiPrivateRes.status).toBe(404);
   });
 
   test('POST /api/documents solo lo puede usar el cliente (asesor recibe 403)', async () => {

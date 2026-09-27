@@ -190,3 +190,37 @@ describe('Motor Financiero - Sistema Francés (Amortización a Cuota Constante)'
     ]);
   });
 });
+
+// =========================================================================
+// CONVENCIÓN DE TASA: la tasa del producto es TEA (como los techos del BCE), no nominal.
+// Caso del reporte de pruebas: 10.000 USD, 12 meses, "12 %".
+// =========================================================================
+describe('Convención de tasa del producto: TEA (caso Educación 10.000 USD / 12 meses)', () => {
+  const { calculateAmortization, nominalToEffectiveRate } = require('../../src/services/amortization');
+  const base = { amount: 10000, termMonths: 12, startDate: '2026-10-01' };
+
+  test('TEA 12 %: tasa mensual 0,9489 %, cuota francesa 885,62 e interés total 627,44', () => {
+    const result = calculateAmortization({ ...base, annualRate: 12, system: 'FRANCES' });
+    expect(result.tasaPeriodica).toBeCloseTo(0.0094888, 6);
+    expect(result.rows[0].cuota).toBe(885.62);
+    expect(result.totalIntereses).toBe(627.44);
+    expect(result.rows[11].saldoFinal).toBe(0);
+  });
+
+  test('TEA 12 % en alemán: primera cuota 928,22, última 841,28 e interés total 616,77', () => {
+    const result = calculateAmortization({ ...base, annualRate: 12, system: 'ALEMAN' });
+    expect(result.rows[0].capital).toBe(833.33);
+    expect(result.rows[0].cuota).toBe(928.22);
+    expect(result.rows[11].cuota).toBe(841.28);
+    expect(result.totalIntereses).toBe(616.77);
+    expect(result.rows[11].saldoFinal).toBe(0);
+  });
+
+  test('un 12 % nominal (1 % mensual) se configura como TEA 12,6825 %: cuota francesa 888,49', () => {
+    const tea = nominalToEffectiveRate(12);
+    expect(tea).toBeCloseTo(12.6825, 4);
+    const result = calculateAmortization({ ...base, annualRate: tea, system: 'FRANCES' });
+    expect(result.tasaPeriodica).toBeCloseTo(0.01, 10);
+    expect(result.rows[0].cuota).toBe(888.49);
+  });
+});
