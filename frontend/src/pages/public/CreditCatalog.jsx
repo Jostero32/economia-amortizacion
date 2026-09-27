@@ -4,6 +4,10 @@ import { publicService } from '../../services/api';
 import Button from '../../components/Button';
 import { LoadingState } from '../../components/Spinner';
 import { ErrorState } from '../../components/EmptyState';
+import { formatPercent } from '../../utils/format';
+
+// Tasa nominal equivalente con pagos mensuales (BCE, Anexo 1)
+const nominalFromEffective = (tea) => 12 * (Math.pow(1 + Number(tea) / 100, 1 / 12) - 1) * 100;
 
 export default function CreditCatalog() {
   const [products, setProducts] = useState([]);
@@ -102,14 +106,14 @@ export default function CreditCatalog() {
               <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100/80">
                 <div className="flex items-baseline justify-between">
                   <div className="text-[32px] font-bold text-secondary tracking-tight font-numeric-data">
-                    {Number(product.tasaInstitucion).toFixed(2)}%
+                    {formatPercent(product.tasaInstitucion)}
                   </div>
                   <span className="material-symbols-outlined text-secondary text-[20px]">
                     trending_up
                   </span>
                 </div>
                 <div className="text-[13px] text-on-surface-variant font-medium">
-                  Tasa anual
+                  Tasa efectiva anual (TEA) · nominal {formatPercent(nominalFromEffective(product.tasaInstitucion))}
                 </div>
               </div>
 
@@ -143,8 +147,14 @@ export default function CreditCatalog() {
                     Máxima legal BCE:
                   </span>
                   <span className="font-medium font-numeric-data text-gray-700">
-                    {Number(product.segment.tasaMaxima).toFixed(2)}%
+                    {formatPercent(product.segment.tasaMaxima)}
                   </span>
+                </div>
+              )}
+              {product.requiereDesgravamen && (
+                <div className="text-[12px] text-gray-600 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] text-secondary">verified_user</span>
+                  Incluye seguro de desgravamen obligatorio
                 </div>
               )}
             </div>

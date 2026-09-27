@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
+import InterestSchedule from '../../components/investment/InterestSchedule';
 import { formatMoney, formatPercent, formatDate } from '../../utils/format';
 
 function DetailRow({ label, value, strong = false }) {
@@ -109,7 +110,9 @@ export default function InvestmentSimulationResult() {
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-5">
         <div>
-          <span className="text-[13px] text-gray-500 block">Recibirás al vencimiento</span>
+          <span className="text-[13px] text-gray-500 block">
+            {simulation.pagoIntereses === 'MENSUAL' ? 'Total que recibirás (capital e intereses netos)' : 'Recibirás al vencimiento'}
+          </span>
           <span className="text-[34px] font-bold text-primary font-numeric-hero">{formatMoney(simulation.valorFinal)}</span>
         </div>
         <div>
@@ -125,6 +128,12 @@ export default function InvestmentSimulationResult() {
           />
           <DetailRow label="Ganancia neta" value={formatMoney(netInterest)} strong />
         </div>
+        {simulation.pagoIntereses === 'MENSUAL' && simulation.cronogramaPagos?.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-[15px] font-bold text-primary">Pagos de intereses cada 30 días</h2>
+            <InterestSchedule pagos={simulation.cronogramaPagos} />
+          </div>
+        )}
         <p className="text-[12px] text-gray-500">
           Interés simple con base comercial de 360 días. Valores referenciales; las condiciones finales se
           confirman al abrir el depósito.

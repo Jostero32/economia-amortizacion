@@ -6,6 +6,7 @@ import Button from '../../components/Button';
 import Alert from '../../components/Alert';
 import FormInput from '../../components/FormInput';
 import { LoadingState } from '../../components/Spinner';
+import InterestSchedule from '../../components/investment/InterestSchedule';
 import { todayISO, addDaysISO } from '../../utils/dates';
 import { formatMoney, formatMoneyWhole, formatPercent, formatDate } from '../../utils/format';
 
@@ -179,6 +180,8 @@ export default function InvestmentSimulator() {
   const grossInterest = Number(simulation?.interesGanado || 0);
   const netInterest = Number(simulation?.interesNeto ?? grossInterest - retention);
   const simulatedDays = Number(simulation?.plazoDias || 0);
+  const monthlyPayments = simulation?.pagoIntereses === 'MENSUAL' ? simulation.cronogramaPagos || [] : [];
+  const monthlyNet = monthlyPayments[0]?.interesNeto;
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-8 md:py-10 space-y-6">
@@ -323,13 +326,28 @@ export default function InvestmentSimulator() {
             ) : (
               <div className={`space-y-5 ${isStale ? 'opacity-60' : ''}`}>
                 <div>
-                  <span className="text-[13px] text-gray-500 block">Recibirás al vencimiento</span>
-                  <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
-                    {formatMoney(simulation.valorFinal)}
-                  </div>
-                  <span className="text-[13px] text-gray-500">
-                    el {formatDate(simulation.fechaVencimiento)} · {simulatedDays} días
-                  </span>
+                  {monthlyPayments.length > 0 ? (
+                    <>
+                      <span className="text-[13px] text-gray-500 block">Recibirás cada mes</span>
+                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
+                        {formatMoney(monthlyNet)}
+                      </div>
+                      <span className="text-[13px] text-gray-500">
+                        {monthlyPayments.length} pagos de intereses y tu capital el {formatDate(simulation.fechaVencimiento)} ·
+                        total {formatMoney(simulation.valorFinal)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[13px] text-gray-500 block">Recibirás al vencimiento</span>
+                      <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero">
+                        {formatMoney(simulation.valorFinal)}
+                      </div>
+                      <span className="text-[13px] text-gray-500">
+                        el {formatDate(simulation.fechaVencimiento)} · {simulatedDays} días
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -391,6 +409,13 @@ export default function InvestmentSimulator() {
               </div>
             )}
           </div>
+
+          {monthlyPayments.length > 0 && !isStale && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6 space-y-3">
+              <h2 className="text-[15px] font-bold text-primary">Pagos de intereses</h2>
+              <InterestSchedule pagos={monthlyPayments} />
+            </div>
+          )}
 
           {sortedRates.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] p-6">

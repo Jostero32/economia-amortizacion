@@ -86,7 +86,7 @@ export default function InvestmentCatalog() {
                       {product.nombre}
                     </h2>
                     <p className="text-[13px] text-on-surface-variant mt-0.5">
-                      Renta fija en dólares • Depósito a plazo (DPF)
+                      {product.pagoIntereses === 'MENSUAL' ? 'Intereses pagados cada mes' : 'Capital e intereses al vencimiento'}
                     </p>
                   </div>
                   <div className="w-10 h-10 rounded-xl bg-blue-50 text-secondary flex items-center justify-center flex-shrink-0">

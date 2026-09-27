@@ -163,6 +163,10 @@ export const adminService = {
   updateCharge: (id, data) => api.put(`/admin/charges/${id}`, data),
   deleteCharge: (id) => api.delete(`/admin/charges/${id}`),
 
+  getInvestmentProducts: () => api.get('/admin/investments'),
+  createInvestmentRate: (productId, data) => api.post(`/admin/investments/${productId}/rates`, data),
+  updateInvestmentRate: (productId, rateId, data) => api.put(`/admin/investments/${productId}/rates/${rateId}`, data),
+  deleteInvestmentRate: (productId, rateId) => api.delete(`/admin/investments/${productId}/rates/${rateId}`),
   createInvestmentProduct: (data) => api.post('/admin/investments', data),
   updateInvestmentProduct: (id, data) => api.put(`/admin/investments/${id}`, data),
   deleteInvestmentProduct: (id) => api.delete(`/admin/investments/${id}`),
