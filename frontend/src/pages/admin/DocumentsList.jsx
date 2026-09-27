@@ -7,10 +7,12 @@ import Badge from '../../components/Badge';
 import Button from '../../components/Button';
 import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
-import { REQUIRED_DOCUMENTS, DOCUMENT_STATUS } from '../../components/application/applicationStatus';
+import { REQUIRED_DOCUMENTS, POLICY_DOCUMENT, DOCUMENT_STATUS } from '../../components/application/applicationStatus';
 import { formatDateTime } from '../../utils/format';
 
-const DOCUMENT_LABELS = Object.fromEntries(REQUIRED_DOCUMENTS.map((doc) => [doc.tipo, doc.label]));
+const DOCUMENT_LABELS = Object.fromEntries(
+  [...REQUIRED_DOCUMENTS, POLICY_DOCUMENT].map((doc) => [doc.tipo, doc.label])
+);
 const FILTERS = [
   { value: 'PENDIENTE', label: 'Por revisar' },
   { value: 'RECHAZADO', label: 'Rechazados' },

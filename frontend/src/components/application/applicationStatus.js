@@ -37,6 +37,17 @@ export const REQUIRED_DOCUMENTS = [
   { tipo: 'SELFIE', label: 'Selfie con tu cédula', hint: 'Para la validación biométrica (simulada).' },
 ];
 
+export const POLICY_DOCUMENT = {
+  tipo: 'POLIZA_DESGRAVAMEN',
+  label: 'Póliza de desgravamen endosada',
+  hint: 'Tu póliza propia, endosada a favor de la institución.',
+};
+
+// Con póliza de desgravamen propia se exige además la póliza endosada
+export function requiredDocumentsFor(application) {
+  return application?.polizaDesgravamenPropia ? [...REQUIRED_DOCUMENTS, POLICY_DOCUMENT] : REQUIRED_DOCUMENTS;
+}
+
 export const DOCUMENT_STATUS = {
   PENDIENTE: { label: 'En revisión', variant: 'EN_REVISION' },
   VALIDADO: { label: 'Validado', variant: 'VALIDADO' },

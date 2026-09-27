@@ -10,10 +10,14 @@ import {
   STATUSES_REQUIRING_NOTE,
   CLOSED_STATUSES,
   REQUIRED_DOCUMENTS,
+  POLICY_DOCUMENT,
   DOCUMENT_STATUS,
+  requiredDocumentsFor,
 } from './applicationStatus';
 
-const DOCUMENT_LABELS = Object.fromEntries(REQUIRED_DOCUMENTS.map((doc) => [doc.tipo, doc.label]));
+const DOCUMENT_LABELS = Object.fromEntries(
+  [...REQUIRED_DOCUMENTS, POLICY_DOCUMENT].map((doc) => [doc.tipo, doc.label])
+);
 
 /**
  * Revisión del asesor: documentos (con motivo de rechazo), validación biométrica y cambio de
@@ -40,7 +44,8 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
   const validatedTypes = new Set(
     (application.documents || []).filter((doc) => doc.estado === 'VALIDADO').map((doc) => doc.tipo)
   );
-  const missingDocuments = REQUIRED_DOCUMENTS.filter((doc) => !validatedTypes.has(doc.tipo));
+  const requiredDocuments = requiredDocumentsFor(application);
+  const missingDocuments = requiredDocuments.filter((doc) => !validatedTypes.has(doc.tipo));
   const noteRequired = STATUSES_REQUIRING_NOTE.includes(estado);
 
   const updateDocument = async (docId, body) => {
@@ -99,7 +104,7 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
         <div className="flex items-center justify-between">
           <h2 className="text-[16px] font-bold text-primary">Documentos</h2>
           <span className="text-[12px] text-gray-500">
-            {REQUIRED_DOCUMENTS.length - missingDocuments.length} de {REQUIRED_DOCUMENTS.length} validados
+            {requiredDocuments.length - missingDocuments.length} de {requiredDocuments.length} validados
           </span>
         </div>
         {!application.documents?.length ? (

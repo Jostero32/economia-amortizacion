@@ -18,6 +18,7 @@ const { roundToTwo, formatMoney } = require('../utils/money');
 const { todayISO, daysBetween, addMonthsClamped, ageOn, toISODate } = require('../utils/dates');
 const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const { quoteCredit, saveCreditSimulation } = require('../services/credit/creditQuote');
+const { getFrequency } = require('../services/amortization/frequencies');
 const {
   generateCreditSimulationPDF,
   generateInvestmentSimulationPDF,
@@ -36,6 +37,7 @@ const REQUIRED_DOCUMENT_TYPES = [
 ];
 
 const DOCUMENT_TYPE_LABELS = {
+  POLIZA_DESGRAVAMEN: 'póliza de desgravamen endosada',
   CEDULA: 'cédula de identidad',
   COMPROBANTE_DOMICILIO: 'comprobante de domicilio',
   COMPROBANTE_INGRESOS: 'comprobante de ingresos',
@@ -109,6 +111,8 @@ async function createCreditApplication(req, res, next) {
       plazoMeses,
       sistemaAmortizacion,
       cargosOpcionales,
+      frecuenciaPago,
+      polizaDesgravamenPropia,
       nombres,
       apellidos,
       cedula,
@@ -141,7 +145,8 @@ async function createCreditApplication(req, res, next) {
         Number(simulation.creditTypeId) !== Number(creditTypeId) ||
         Number(simulation.monto) !== Number(monto) ||
         Number(simulation.plazoMeses) !== Number(plazoMeses) ||
-        simulation.sistemaAmortizacion !== sistemaAmortizacion
+        simulation.sistemaAmortizacion !== sistemaAmortizacion ||
+        (simulation.frecuenciaPago || 'MENSUAL') !== (frecuenciaPago || simulation.frecuenciaPago || 'MENSUAL')
       ) {
         return errorResponse(res, 'Los datos no coinciden con la simulación. Vuelve a simular el crédito.', 400);
       }
@@ -184,18 +189,28 @@ async function createCreditApplication(req, res, next) {
         termMonths: plazoMeses,
         amortizationSystem: sistemaAmortizacion,
         cargosOpcionales,
+        frecuenciaPago,
+        polizaDesgravamenPropia,
       });
-      simulation = await saveCreditSimulation(quote.result, { creditTypeId, userId });
+      simulation = await saveCreditSimulation(quote.result, {
+        creditTypeId,
+        userId,
+        polizaDesgravamenPropia: quote.polizaDesgravamenPropia,
+      });
       rows = quote.result.rows;
     }
 
     // Capacidad de pago: la cuota más alta (con seguros) debe caber en los ingresos disponibles
-    const cuotaMaxima = rows.reduce((max, row) => Math.max(max, Number(row.totalPago)), 0);
+    // Con pagos trimestrales o semestrales se compara la cuota mensual equivalente
+    const frecuencia = getFrequency(simulation.frecuenciaPago || 'MENSUAL');
+    const cuotaMaxima = roundToTwo(
+      rows.reduce((max, row) => Math.max(max, Number(row.totalPago)), 0) / frecuencia.meses
+    );
     const disponible = roundToTwo(Number(ingresosMensuales) - Number(egresosMensuales));
     if (cuotaMaxima > disponible) {
       return errorResponse(
         res,
-        `La cuota de ${formatMoney(cuotaMaxima)} supera tus ingresos disponibles de ${formatMoney(Math.max(disponible, 0))}. Prueba con un monto menor o un plazo mayor.`,
+        `La cuota${frecuencia.meses > 1 ? ' mensual equivalente' : ''} de ${formatMoney(cuotaMaxima)} supera tus ingresos disponibles de ${formatMoney(Math.max(disponible, 0))}. Prueba con un monto menor o un plazo mayor.`,
         400,
         { ingresosMensuales: 'Tus ingresos disponibles no cubren la cuota.' }
       );
@@ -218,6 +233,8 @@ async function createCreditApplication(req, res, next) {
       monto: Number(monto),
       plazoMeses: parseInt(plazoMeses, 10),
       sistemaAmortizacion,
+      frecuenciaPago: frecuencia.codigo,
+      polizaDesgravamenPropia: Boolean(simulation.polizaDesgravamenPropia),
       tasaAplicada: simulation.tasaAnual,
       cuotaEstimada: rows[0] ? rows[0].totalPago : simulation.cuotaInicial,
       estado: 'PENDIENTE',
@@ -601,7 +618,11 @@ async function updateApplicationStatus(req, res, next) {
       });
 
       const validatedTypes = new Set(validatedDocuments.map(document => document.tipo));
-      const missingDocumentTypes = REQUIRED_DOCUMENT_TYPES.filter(type => !validatedTypes.has(type));
+      // Con póliza de desgravamen propia se exige además la póliza endosada
+      const requiredTypes = !isInvestment && application.polizaDesgravamenPropia
+        ? [...REQUIRED_DOCUMENT_TYPES, 'POLIZA_DESGRAVAMEN']
+        : REQUIRED_DOCUMENT_TYPES;
+      const missingDocumentTypes = requiredTypes.filter(type => !validatedTypes.has(type));
 
       if (missingDocumentTypes.length > 0) {
         const missingLabels = missingDocumentTypes.map(type => DOCUMENT_TYPE_LABELS[type]);

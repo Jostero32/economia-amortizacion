@@ -223,6 +223,81 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     });
   });
 
+  describe('Póliza de desgravamen propia', () => {
+    test('aprobar exige la póliza endosada validada además de los 4 documentos', async () => {
+      const inmobiliario = await CreditType.findOne({ where: { nombre: 'Crédito Inmobiliario' } });
+      const simRes = await request(app)
+        .post('/api/simulations/credits')
+        .send({
+          creditTypeId: inmobiliario.id,
+          amount: 20000,
+          termMonths: 120,
+          amortizationSystem: 'FRANCES',
+          polizaDesgravamenPropia: true,
+        });
+      const simulation = simRes.body.data.simulation;
+
+      const created = await request(app)
+        .post('/api/credit-applications')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          simulationId: simulation.id,
+          creditTypeId: simulation.creditTypeId,
+          monto: simulation.monto,
+          plazoMeses: simulation.plazoMeses,
+          sistemaAmortizacion: simulation.sistemaAmortizacion,
+          nombres: 'Carlos',
+          apellidos: 'Mendoza',
+          cedula: '1723456784',
+          direccion: 'Av. 10 de Agosto y Colón',
+          ciudad: 'Quito',
+          telefono: '0998877665',
+          email: 'carlos@cliente.local',
+          fechaNacimiento: '1990-05-15',
+          actividadEconomica: 'Empleado privado',
+          ingresosMensuales: 1500,
+          egresosMensuales: 600,
+          autorizaConsultaBuro: true,
+        });
+      expect(created.status).toBe(201);
+      const application = created.body.data.application;
+      expect(application.polizaDesgravamenPropia).toBe(true);
+
+      await Promise.all(['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE'].map((tipo) => Document.create({
+        creditApplicationId: application.id,
+        tipo,
+        nombreArchivo: `${tipo}.pdf`,
+        ruta: `${tipo}-poliza-test.pdf`,
+        mimeType: 'application/pdf',
+        tamano: 1024,
+        estado: 'VALIDADO',
+      })));
+
+      const status = (body) => request(app)
+        .patch(`/api/admin/applications/${application.id}/status`)
+        .set('Authorization', `Bearer ${advisorToken}`)
+        .send(body);
+
+      expect((await status({ estado: 'EN_REVISION' })).status).toBe(200);
+
+      const withoutPolicy = await status({ estado: 'APROBADA', biometriaValidada: true });
+      expect(withoutPolicy.status).toBe(400);
+      expect(withoutPolicy.body.message).toMatch(/póliza de desgravamen endosada/);
+
+      await Document.create({
+        creditApplicationId: application.id,
+        tipo: 'POLIZA_DESGRAVAMEN',
+        nombreArchivo: 'poliza.pdf',
+        ruta: 'poliza-test.pdf',
+        mimeType: 'application/pdf',
+        tamano: 1024,
+        estado: 'VALIDADO',
+      });
+      const approved = await status({ estado: 'APROBADA', biometriaValidada: true });
+      expect(approved.status).toBe(200);
+    });
+  });
+
   describe('PDF de la solicitud', () => {
     let applicationId;
 

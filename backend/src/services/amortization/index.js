@@ -3,6 +3,7 @@ const { calculateGermanAmortization } = require('./german');
 const { todayISO, toISODate } = require('../../utils/dates');
 const { roundToTwo } = require('../../utils/money');
 const { calculateDisbursementCharges } = require('./charges');
+const { getFrequency, effectiveToPeriodicRate } = require('./frequencies');
 
 /**
  * Convierte una Tasa Efectiva Anual (TEA) a Tasa Periódica Mensual
@@ -53,15 +54,16 @@ function nominalToEffectiveRate(nominalRate, days = 30) {
 /**
  * Costo efectivo anual para el cliente (informativo).
  *
- * Es la TIR mensual de los flujos reales -lo que recibe al desembolso y lo que paga en cada
- * cuota, incluidos seguros e impuestos- expresada en términos anuales: (1 + TIR)^12 - 1.
+ * Es la TIR por período de los flujos reales -lo que recibe al desembolso y lo que paga en cada
+ * cuota, incluidos seguros e impuestos- expresada en términos anuales: (1 + TIR)^(períodos por año) - 1.
  * A diferencia de la TEA legal, incluye SOLCA y seguros, por eso es mayor.
  *
  * @param {number} montoLiquido - Valor entregado al cliente
  * @param {Array<number>} pagos - Pago total de cada cuota
+ * @param {number} [periodsPerYear=12] - Cuotas por año (12 mensual, 4 trimestral, 2 semestral)
  * @returns {number} Porcentaje anual
  */
-function calculateAnnualCostRate(montoLiquido, pagos) {
+function calculateAnnualCostRate(montoLiquido, pagos, periodsPerYear = 12) {
   const npv = (rate) => pagos.reduce(
     (sum, pago, index) => sum - pago / Math.pow(1 + rate, index + 1),
     montoLiquido
@@ -79,7 +81,7 @@ function calculateAnnualCostRate(montoLiquido, pagos) {
     if (npv(mid) < 0) low = mid;
     else high = mid;
   }
-  return (Math.pow(1 + (low + high) / 2, 12) - 1) * 100;
+  return (Math.pow(1 + (low + high) / 2, periodsPerYear) - 1) * 100;
 }
 
 /**
@@ -91,6 +93,7 @@ function calculateAnnualCostRate(montoLiquido, pagos) {
  * @param {string} params.system - 'FRANCES' o 'ALEMAN'
  * @param {string} [params.startDate] - Fecha de desembolso (YYYY-MM-DD), por defecto hoy en Ecuador
  * @param {Array} [params.charges] - Cargos que aplican a la operación (ver ./charges.js)
+ * @param {string} [params.paymentFrequency='MENSUAL'] - MENSUAL, BIMESTRAL, TRIMESTRAL o SEMESTRAL
  * @returns {Object} Resultado de la simulación
  */
 function calculateAmortization({
@@ -100,6 +103,7 @@ function calculateAmortization({
   system = 'FRANCES',
   startDate,
   charges = [],
+  paymentFrequency = 'MENSUAL',
 }) {
   const fechaInicio = startDate ? toISODate(startDate) : todayISO();
   const principal = Number(amount);
@@ -121,14 +125,23 @@ function calculateAmortization({
     throw new Error(`Sistema de amortización no válido: '${system}'. Utilice FRANCES o ALEMAN.`);
   }
 
-  // Conversión formal de tasa efectiva anual a mensual
+  const frecuencia = getFrequency(paymentFrequency);
+  if (n % frecuencia.meses !== 0) {
+    throw new Error(
+      `Con pagos de frecuencia ${frecuencia.cuota} el plazo debe ser múltiplo de ${frecuencia.meses} meses.`
+    );
+  }
+
+  // Conversión formal de la tasa efectiva anual a la tasa del período de pago
   const monthlyRate = annualEffectiveToMonthlyRate(tasaAnual);
+  const periodRate = effectiveToPeriodicRate(tasaAnual, frecuencia.dias);
 
   const calculate = sysUpper === 'FRANCES' ? calculateFrenchAmortization : calculateGermanAmortization;
   const simulationResult = calculate({
     principal,
-    monthlyRate,
+    monthlyRate: periodRate,
     termMonths: n,
+    monthsPerPeriod: frecuencia.meses,
     startDate: fechaInicio,
     charges,
   });
@@ -148,11 +161,16 @@ function calculateAmortization({
     montoLiquido,
     desgloseCargos: [...cargosDesembolsoDetalle, ...simulationResult.cargosPeriodicos],
     tasaAnual,
-    tasaNominal: effectiveToNominalRate(tasaAnual, 30),
+    // La tasa nominal del contrato depende de la frecuencia de pago (BCE, Anexo 1)
+    tasaNominal: effectiveToNominalRate(tasaAnual, frecuencia.dias),
     tasaMensual: monthlyRate,
+    tasaPeriodica: periodRate,
+    frecuenciaPago: frecuencia.codigo,
+    numeroCuotas: simulationResult.rows.length,
     costoEfectivoAnual: calculateAnnualCostRate(
       montoLiquido,
-      simulationResult.rows.map((row) => row.totalPago)
+      simulationResult.rows.map((row) => row.totalPago),
+      12 / frecuencia.meses
     ),
     fechaInicio,
   };

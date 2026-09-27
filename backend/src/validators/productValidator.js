@@ -1,5 +1,6 @@
 const { body } = require('express-validator');
 const { validateRequest } = require('./validateRequest');
+const { FREQUENCY_CODES } = require('../services/amortization/frequencies');
 
 const MONEY_FORMAT = { decimal_digits: '0,2' };
 
@@ -48,6 +49,13 @@ function creditProductRules(isUpdate) {
       .bail()
       .custom(notLessThan('plazoMinimo', 'El plazo máximo no puede ser menor al plazo mínimo.')),
     body('icono').optional({ nullable: true }).isLength({ max: 50 }).withMessage('El ícono no es válido.'),
+    body('frecuenciasPago')
+      .optional()
+      .isArray({ min: 1 })
+      .withMessage('Elige al menos una frecuencia de pago.'),
+    body('frecuenciasPago.*')
+      .isIn(FREQUENCY_CODES)
+      .withMessage('La frecuencia de pago debe ser mensual, bimestral, trimestral o semestral.'),
     body('activo').optional().isBoolean().withMessage('El estado debe ser verdadero o falso.').toBoolean(),
     validateRequest,
   ];

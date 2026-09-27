@@ -1,6 +1,7 @@
 const { body } = require('express-validator');
 const { validateRequest } = require('./validateRequest');
 const { todayISO, addDays } = require('../utils/dates');
+const { FREQUENCY_CODES } = require('../services/amortization/frequencies');
 
 // Una operación se puede programar hasta 90 días después de hoy
 const MAX_START_DAYS = 90;
@@ -53,6 +54,16 @@ const creditRules = [
     .isInt({ min: 1 })
     .withMessage('El plazo debe ser un número entero de meses.'),
   startDateRule('desembolso'),
+  body('frecuenciaPago')
+    .optional({ values: 'falsy' })
+    .toUpperCase()
+    .isIn(FREQUENCY_CODES)
+    .withMessage('La frecuencia de pago debe ser mensual, bimestral, trimestral o semestral.'),
+  body('polizaDesgravamenPropia')
+    .optional()
+    .isBoolean()
+    .withMessage('Indica si tienes una póliza de desgravamen propia.')
+    .toBoolean(),
   body('cargosOpcionales')
     .optional()
     .isArray()

@@ -49,6 +49,16 @@ const CreditApplication = sequelize.define('CreditApplication', {
     type: DataTypes.ENUM('FRANCES', 'ALEMAN'),
     allowNull: false,
   },
+  frecuenciaPago: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'MENSUAL',
+  },
+  polizaDesgravamenPropia: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   tasaAplicada: {
     type: DataTypes.DECIMAL(6, 4),
     allowNull: false,

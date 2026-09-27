@@ -53,9 +53,15 @@ function isOptionalCharge(charge, { requiresLifeInsurance = false } = {}) {
  * @param {Array<number>|undefined} options.acceptedOptionalIds - Cargos opcionales aceptados por el
  *   cliente. Si no se indica, se asumen todos aceptados (como la casilla marcada por defecto).
  * @param {boolean} options.requiresLifeInsurance - El producto exige seguro de desgravamen
+ * @param {boolean} options.ownLifeInsurance - El cliente endosa su propia póliza de desgravamen
  */
-function selectApplicableCharges(charges, { acceptedOptionalIds, requiresLifeInsurance = false } = {}) {
+function selectApplicableCharges(
+  charges,
+  { acceptedOptionalIds, requiresLifeInsurance = false, ownLifeInsurance = false } = {}
+) {
   return charges.filter((charge) => {
+    // Con póliza propia endosada la entidad no cobra la prima de desgravamen
+    if (ownLifeInsurance && charge.categoria === 'SEGURO_DESGRAVAMEN') return false;
     if (!isOptionalCharge(charge, { requiresLifeInsurance })) return true;
     if (acceptedOptionalIds === undefined || acceptedOptionalIds === null) return true;
     return acceptedOptionalIds.map(Number).includes(Number(charge.id));
@@ -96,13 +102,17 @@ function calculateDisbursementCharges(charges, { principal, termMonths }) {
 }
 
 /**
- * Valor de un cargo periódico en una cuota
+ * Valor de un cargo periódico en una cuota.
+ * Los cargos MENSUAL (como la prima del desgravamen) se cobran por cada mes del período: una cuota
+ * trimestral incluye tres meses de prima. Los cargos POR_CUOTA se cobran una vez por cuota.
  * @param {Object} charge
- * @param {Object} context - { principal, saldoInicial, cuota }
+ * @param {Object} context - { principal, saldoInicial, cuota, monthsPerPeriod }
  */
-function calculatePeriodicChargeValue(charge, { principal, saldoInicial, cuota }) {
+function calculatePeriodicChargeValue(charge, { principal, saldoInicial, cuota, monthsPerPeriod = 1 }) {
+  const months = charge.aplicacion === 'MENSUAL' ? monthsPerPeriod : 1;
+
   if (charge.tipo !== 'PORCENTAJE') {
-    return roundToTwo(Number(charge.valor || 0));
+    return roundToTwo(Number(charge.valor || 0) * months);
   }
 
   const porcentaje = Number(charge.porcentaje || 0) / 100;
@@ -114,7 +124,7 @@ function calculatePeriodicChargeValue(charge, { principal, saldoInicial, cuota }
   } else {
     base = principal;
   }
-  return roundToTwo(base * porcentaje);
+  return roundToTwo(base * porcentaje * months);
 }
 
 /**

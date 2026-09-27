@@ -26,7 +26,7 @@ const Document = sequelize.define('Document', {
     onDelete: 'CASCADE',
   },
   tipo: {
-    type: DataTypes.ENUM('CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'OTRO'),
+    type: DataTypes.ENUM('CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'POLIZA_DESGRAVAMEN', 'OTRO'),
     allowNull: false,
   },
   nombreArchivo: {

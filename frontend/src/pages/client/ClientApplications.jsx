@@ -13,6 +13,7 @@ import { STATUS_LABELS } from '../../components/application/applicationStatus';
 import { formatMoney, formatPercent, formatDate } from '../../utils/format';
 import { todayISO } from '../../utils/dates';
 import { rules, ageFrom } from '../../utils/validation';
+import { getFrequency } from '../../utils/frequencies';
 
 const MIN_AGE = 18;
 const MAX_DEBT_TO_INCOME = 40; // %
@@ -200,9 +201,11 @@ export default function ClientApplications() {
   const handleInputChange = (event) => updateField(event.target.name, event.target.value);
   const fieldError = (errors, name) => serverErrors[name] || (showErrors ? errors[name] : undefined);
 
-  // Capacidad de pago: la cuota más alta frente a los ingresos disponibles
+  // Capacidad de pago: la cuota más alta (mensual equivalente) frente a los ingresos disponibles
+  const frecuencia = getFrequency(creditSimulation?.frecuenciaPago);
   const cuotaMaxima = creditSimulation
     ? Math.max(...(creditSimulation.rows || []).map((row) => Number(row.totalPago)), Number(creditSimulation.cuotaInicial))
+      / frecuencia.meses
     : 0;
   const ingresos = Number(formData.ingresosMensuales) || 0;
   const disponible = ingresos - (Number(formData.egresosMensuales) || 0);
@@ -229,6 +232,8 @@ export default function ClientApplications() {
         monto: creditSimulation.monto,
         plazoMeses: creditSimulation.plazoMeses,
         sistemaAmortizacion: creditSimulation.sistemaAmortizacion,
+        frecuenciaPago: creditSimulation.frecuenciaPago || 'MENSUAL',
+        polizaDesgravamenPropia: Boolean(creditSimulation.polizaDesgravamenPropia),
         nombres: formData.nombres.trim(),
         apellidos: formData.apellidos.trim(),
         cedula: formData.cedula.trim(),
@@ -330,8 +335,11 @@ export default function ClientApplications() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-surface-container-low p-4 rounded-lg mb-4 text-[13px]">
             <div><span className="block text-on-surface-variant">Producto</span><strong>{creditSimulation.creditType?.nombre}</strong></div>
             <div><span className="block text-on-surface-variant">Monto</span><strong>{formatMoney(creditSimulation.monto)}</strong></div>
-            <div><span className="block text-on-surface-variant">Plazo</span><strong>{creditSimulation.plazoMeses} meses</strong></div>
-            <div><span className="block text-on-surface-variant">Cuota</span><strong>{formatMoney(cuotaMaxima)}</strong></div>
+            <div><span className="block text-on-surface-variant">Plazo</span><strong>{creditSimulation.plazoMeses} meses · pagos {frecuencia.plural}</strong></div>
+            <div>
+              <span className="block text-on-surface-variant">{frecuencia.meses > 1 ? 'Cuota mensual equivalente' : 'Cuota'}</span>
+              <strong>{formatMoney(cuotaMaxima)}</strong>
+            </div>
           </div>
           <form onSubmit={submitCreditApplication} noValidate className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -11,6 +11,7 @@ import CreditSummary from '../../components/credit/CreditSummary';
 import AmortizationTable from '../../components/credit/AmortizationTable';
 import { todayISO, addDaysISO } from '../../utils/dates';
 import { formatMoney, formatMoneyWhole, formatPercent } from '../../utils/format';
+import { FREQUENCY_ORDER, getFrequency } from '../../utils/frequencies';
 
 // Plazos habituales en meses; se muestran los que caben en el rango del producto
 const TERM_OPTIONS = [6, 12, 18, 24, 36, 48, 60, 72, 120, 180, 240];
@@ -23,8 +24,10 @@ const SYSTEMS = [
   { value: 'ALEMAN', title: 'Cuota decreciente', detail: 'Empiezas pagando más y la cuota baja cada mes (sistema alemán).' },
 ];
 
-function termChips(product) {
-  const options = TERM_OPTIONS.filter((m) => m >= product.plazoMinimo && m <= product.plazoMaximo);
+function termChips(product, monthsPerPeriod = 1) {
+  const options = TERM_OPTIONS.filter(
+    (m) => m >= product.plazoMinimo && m <= product.plazoMaximo && m % monthsPerPeriod === 0
+  );
   if (options.length <= MAX_TERM_CHIPS) return options;
   // Repartir las opciones a lo largo del rango para no saturar la pantalla
   const step = (options.length - 1) / (MAX_TERM_CHIPS - 1);
@@ -56,6 +59,9 @@ function validate(form, product) {
     errors.termMonths = 'El plazo debe ser un número entero de meses.';
   } else if (Number(form.termMonths) < product.plazoMinimo || Number(form.termMonths) > product.plazoMaximo) {
     errors.termMonths = `El plazo debe estar entre ${product.plazoMinimo} y ${product.plazoMaximo} meses.`;
+  } else if (Number(form.termMonths) % getFrequency(form.frecuenciaPago).meses !== 0) {
+    const frecuencia = getFrequency(form.frecuenciaPago);
+    errors.termMonths = `Con pagos ${frecuencia.plural} el plazo debe ser múltiplo de ${frecuencia.meses} meses.`;
   }
 
   if (!form.startDate) {
@@ -85,6 +91,8 @@ export default function CreditSimulator() {
     creditTypeId: searchParams.get('creditTypeId') || '',
     amount: searchParams.get('monto') || '10000',
     termMonths: searchParams.get('plazo') || '24',
+    frecuenciaPago: 'MENSUAL',
+    polizaDesgravamenPropia: false,
     system: 'FRANCES',
     startDate: todayISO(),
   });
@@ -154,6 +162,9 @@ export default function CreditSimulator() {
       return {
         ...current,
         creditTypeId: id,
+        // Volver a pago mensual si el nuevo producto no admite la frecuencia elegida
+        frecuenciaPago: next.frecuenciasPago?.includes(current.frecuenciaPago) ? current.frecuenciaPago : 'MENSUAL',
+        polizaDesgravamenPropia: next.requiereDesgravamen ? current.polizaDesgravamenPropia : false,
         // Ajustar monto y plazo a los límites del nuevo producto
         amount: Number.isFinite(amount) && amount > 0
           ? String(clamp(amount, Number(next.montoMinimo), Number(next.montoMaximo)))
@@ -178,6 +189,8 @@ export default function CreditSimulator() {
     termMonths: Number(form.termMonths),
     startDate: form.startDate,
     cargosOpcionales: acceptedOptional,
+    frecuenciaPago: form.frecuenciaPago,
+    polizaDesgravamenPropia: form.polizaDesgravamenPropia,
   });
 
   const handleSubmit = async (event) => {
@@ -256,7 +269,9 @@ export default function CreditSimulator() {
   }
 
   const fieldError = (field) => (showErrors ? errors[field] : undefined);
-  const chips = termChips(product);
+  const frecuencia = getFrequency(form.frecuenciaPago);
+  const chips = termChips(product, frecuencia.meses);
+  const frequencies = FREQUENCY_ORDER.filter((code) => (product.frecuenciasPago || ['MENSUAL']).includes(code));
   const termMonthsNumber = Number(form.termMonths);
 
   return (
@@ -359,6 +374,28 @@ export default function CreditSimulator() {
             )}
           </div>
 
+          {frequencies.length > 1 && (
+            <div className="space-y-1.5">
+              <span className="block font-title-md text-[13px] text-primary">¿Cada cuánto quieres pagar?</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {frequencies.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => updateField('frecuenciaPago', code)}
+                    className={`py-2 rounded-lg border text-[13px] transition-colors ${
+                      form.frecuenciaPago === code
+                        ? 'bg-secondary text-white border-secondary font-semibold'
+                        : 'bg-gray-50 text-primary border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {getFrequency(code).label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <span className="block font-title-md text-[13px] text-primary">Tipo de cuota</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -381,10 +418,26 @@ export default function CreditSimulator() {
           </div>
 
           {product.requiereDesgravamen && (
-            <p className="text-[12px] text-gray-600 bg-gray-50 rounded-lg p-3">
-              Incluye seguro de desgravamen, obligatorio en créditos de vivienda. Puedes contratarlo con la
-              aseguradora que elijas.
-            </p>
+            <div className="text-[12px] text-gray-600 bg-gray-50 rounded-lg p-3 space-y-2">
+              <p>
+                El seguro de desgravamen es obligatorio en créditos de vivienda. Puedes contratarlo con la
+                institución o con la aseguradora que elijas.
+              </p>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.polizaDesgravamenPropia}
+                  onChange={(e) => updateField('polizaDesgravamenPropia', e.target.checked)}
+                  className="h-4 w-4 mt-0.5 accent-secondary"
+                />
+                <span>
+                  <strong className="text-primary">Tengo mi propia póliza de desgravamen</strong>
+                  <span className="block">
+                    No se cobra la prima en la cuota; deberás entregar la póliza endosada a favor de la institución.
+                  </span>
+                </span>
+              </label>
+            </div>
           )}
           {optionalCharges.map((charge) => (
             <label key={charge.id} className="flex items-start gap-2.5 cursor-pointer p-3 rounded-lg border border-gray-100">
@@ -498,7 +551,7 @@ export default function CreditSimulator() {
         ) : (
           <div className="space-y-4">
             <p className="text-[14px] text-gray-600">
-              {formatMoney(form.amount)} a {form.termMonths} meses con {comparison.product.nombre}.
+              {formatMoney(form.amount)} a {form.termMonths} meses con pagos {frecuencia.plural} ({comparison.product.nombre}).
             </p>
             <table className="w-full text-[14px]">
               <thead>

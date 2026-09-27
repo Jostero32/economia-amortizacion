@@ -96,6 +96,7 @@ async function createCreditProduct(req, res, next) {
       plazoMinimo,
       plazoMaximo,
       icono,
+      frecuenciasPago,
     } = req.body;
 
     const segment = await CreditSegment.findByPk(segmentId);
@@ -122,6 +123,7 @@ async function createCreditProduct(req, res, next) {
       plazoMinimo: plazoMinimo || 3,
       plazoMaximo: plazoMaximo || 72,
       icono: icono || 'credit_card',
+      frecuenciasPago: frecuenciasPago || ['MENSUAL'],
       activo: true,
     });
 
@@ -170,6 +172,7 @@ async function updateCreditProduct(req, res, next) {
       plazoMaximo,
       activo,
       icono,
+      frecuenciasPago,
     } = req.body;
 
     let segment = product.segment;
@@ -245,6 +248,7 @@ async function updateCreditProduct(req, res, next) {
       plazoMaximo: plazoMaximo !== undefined ? plazoMaximo : product.plazoMaximo,
       activo: activo !== undefined ? activo : product.activo,
       icono: icono !== undefined ? icono : product.icono,
+      frecuenciasPago: frecuenciasPago !== undefined ? frecuenciasPago : product.frecuenciasPago,
     });
 
     await logAudit({

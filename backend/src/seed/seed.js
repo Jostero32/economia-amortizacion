@@ -241,6 +241,10 @@ async function seedDatabase() {
           montoMaximo: ct.montoMaximo,
           plazoMinimo: ct.plazoMinimo,
           plazoMaximo: ct.plazoMaximo,
+          // Microcrédito y productivo admiten pagos bimestrales, trimestrales o semestrales
+          frecuenciasPago: /^(MICRO_|PROD_)/.test(ct.segmentCode)
+            ? ['MENSUAL', 'BIMESTRAL', 'TRIMESTRAL', 'SEMESTRAL']
+            : ['MENSUAL'],
           activo: true,
         },
       });

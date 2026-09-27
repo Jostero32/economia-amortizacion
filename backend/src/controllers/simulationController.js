@@ -29,6 +29,7 @@ async function simulateCredit(req, res, next) {
     const savedSimulation = await saveCreditSimulation(result, {
       creditTypeId: quote.product.id,
       userId: req.user ? req.user.id : null,
+      polizaDesgravamenPropia: quote.polizaDesgravamenPropia,
     });
 
     return successResponse(
@@ -59,6 +60,8 @@ async function compareCreditSystems(req, res, next) {
       const lastRow = result.rows[result.rows.length - 1];
       return {
         sistema: result.sistema,
+        frecuenciaPago: result.frecuenciaPago,
+        numeroCuotas: result.numeroCuotas,
         primeraCuota: result.rows[0].totalPago,
         ultimaCuota: lastRow.totalPago,
         totalIntereses: result.totalIntereses,

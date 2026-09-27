@@ -44,7 +44,23 @@ const CreditSimulation = sequelize.define('CreditSimulation', {
   tasaNominal: {
     type: DataTypes.DECIMAL(8, 4),
     allowNull: true,
-    comment: 'Tasa nominal anual equivalente con pagos mensuales (BCE, Anexo 1)',
+    comment: 'Tasa nominal anual equivalente según la frecuencia de pago (BCE, Anexo 1)',
+  },
+  frecuenciaPago: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'MENSUAL',
+  },
+  tasaPeriodica: {
+    type: DataTypes.DECIMAL(12, 10),
+    allowNull: true,
+    comment: 'Tasa del período de pago: (1 + TEA)^(días/360) - 1',
+  },
+  polizaDesgravamenPropia: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'El cliente endosa su propia póliza de desgravamen; la entidad no cobra la prima',
   },
   tasaMensual: {
     type: DataTypes.DECIMAL(8, 6),

@@ -17,7 +17,7 @@ async function uploadDocument(req, res, next) {
 
     const { tipo, creditApplicationId, investmentApplicationId } = req.body;
 
-    const validTypes = ['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'OTRO'];
+    const validTypes = ['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE', 'POLIZA_DESGRAVAMEN', 'OTRO'];
     if (!validTypes.includes(tipo)) {
       return errorResponse(res, `Tipo de documento inválido. Opciones: ${validTypes.join(', ')}`, 400);
     }

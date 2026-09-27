@@ -7,6 +7,7 @@ import FormInput from '../../components/FormInput';
 import Alert from '../../components/Alert';
 import Badge from '../../components/Badge';
 import { LoadingState } from '../../components/Spinner';
+import { FREQUENCY_ORDER, getFrequency } from '../../utils/frequencies';
 
 export default function CreditTypeForm() {
   const { id } = useParams();
@@ -27,6 +28,7 @@ export default function CreditTypeForm() {
     montoMaximo: '25000',
     plazoMinimo: '6',
     plazoMaximo: '48',
+    frecuenciasPago: ['MENSUAL'],
     activo: true,
   });
 
@@ -64,6 +66,7 @@ export default function CreditTypeForm() {
               montoMaximo: String(p.montoMaximo),
               plazoMinimo: String(p.plazoMinimo),
               plazoMaximo: String(p.plazoMaximo),
+              frecuenciasPago: p.frecuenciasPago || ['MENSUAL'],
               activo: Boolean(p.activo),
             });
           }
@@ -111,6 +114,7 @@ export default function CreditTypeForm() {
         montoMaximo: parseFloat(formData.montoMaximo),
         plazoMinimo: parseInt(formData.plazoMinimo, 10),
         plazoMaximo: parseInt(formData.plazoMaximo, 10),
+        frecuenciasPago: formData.frecuenciasPago,
         activo: formData.activo,
       };
 
@@ -311,6 +315,33 @@ export default function CreditTypeForm() {
               suffix="meses"
               required
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="block font-title-md text-[13px] text-primary">Frecuencias de pago permitidas</span>
+            <div className="flex flex-wrap gap-3">
+              {FREQUENCY_ORDER.map((code) => (
+                <label key={code} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.frecuenciasPago.includes(code)}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        frecuenciasPago: e.target.checked
+                          ? FREQUENCY_ORDER.filter((f) => f === code || prev.frecuenciasPago.includes(f))
+                          : prev.frecuenciasPago.filter((f) => f !== code),
+                      }))
+                    }
+                    className="h-4 w-4 accent-secondary"
+                  />
+                  {getFrequency(code).label}
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-on-surface-variant">
+              Microcrédito y productivo suelen admitir pagos trimestrales o semestrales; consumo y vivienda, mensuales.
+            </p>
           </div>
 
           <div className="p-3 rounded-lg bg-surface-container-low border border-surface-container-high">

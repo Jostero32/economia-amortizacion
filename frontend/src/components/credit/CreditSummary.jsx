@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatMoney, formatPercent, formatDate } from '../../utils/format';
+import { getFrequency } from '../../utils/frequencies';
 
 // Referencia usual de endeudamiento: la cuota no debería superar el 40 % del ingreso mensual
 export const MAX_DEBT_TO_INCOME = 0.4;
@@ -42,18 +43,24 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
   const firstInsurance = Number(rows[0]?.cargos || 0);
   const maxPayment = rows.reduce((max, row) => Math.max(max, Number(row.totalPago)), firstPayment);
   const isGerman = simulation.sistemaAmortizacion === 'ALEMAN';
+  const frecuencia = getFrequency(simulation.frecuenciaPago);
+  const cuotas = rows.length || simulation.plazoMeses;
+  // Con pagos no mensuales se compara el ingreso con la cuota mensual equivalente
+  const maxMonthlyPayment = maxPayment / frecuencia.meses;
 
   return (
     <div className="space-y-5">
       <div>
         <span className="text-[13px] text-gray-500 block">
-          {isGerman ? 'Primera cuota (luego disminuye cada mes)' : 'Cuota mensual fija'}
+          {isGerman
+            ? `Primera cuota ${frecuencia.cuota} (luego disminuye)`
+            : `Cuota ${frecuencia.cuota} fija`}
         </span>
         <div className="text-[36px] sm:text-[40px] font-bold text-primary tracking-tight font-numeric-hero leading-tight">
           {formatMoney(firstPayment)}
         </div>
         <span className="text-[13px] text-gray-500">
-          {simulation.plazoMeses} cuotas
+          {cuotas} cuotas {frecuencia.plural}
           {rows[0] && ` · primer pago el ${formatDate(rows[0].fechaPago)}`}
           {firstInsurance > 0 && ` · incluye ${formatMoney(firstInsurance)} de seguro`}
         </span>
@@ -72,7 +79,7 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
         <Row label="Valor que recibes" value={formatMoney(montoLiquido)} strong />
         <Row
           label="Tasa de interés nominal anual"
-          hint="Es la que figura en el contrato"
+          hint={`Es la que figura en el contrato (pagos ${frecuencia.plural})`}
           value={formatPercent(tasaNominal)}
         />
         <Row
@@ -82,6 +89,9 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
         />
         <Row label="Total de intereses" value={formatMoney(simulation.totalIntereses)} />
         {insuranceTotal > 0 && <Row label="Total de seguros" value={formatMoney(insuranceTotal)} />}
+        {simulation.polizaDesgravamenPropia && (
+          <Row label="Seguro de desgravamen" hint="Endosarás tu propia póliza a favor de la institución" value="Póliza propia" />
+        )}
         <Row label="Total a pagar en cuotas" value={formatMoney(simulation.totalPagar)} strong />
         {simulation.costoEfectivoAnual != null && (
           <Row
@@ -93,7 +103,7 @@ export default function CreditSummary({ simulation, rows = [], tasaMaximaBCE }) 
       </div>
 
       <p className="text-[12px] text-gray-500 bg-gray-50 rounded-lg p-3">
-        Ingreso mensual sugerido: <strong className="text-primary">{formatMoney(maxPayment / MAX_DEBT_TO_INCOME)}</strong>.
+        Ingreso mensual sugerido: <strong className="text-primary">{formatMoney(maxMonthlyPayment / MAX_DEBT_TO_INCOME)}</strong>.
         Se recomienda que tus cuotas no superen el 40 % de tus ingresos.
       </p>
     </div>

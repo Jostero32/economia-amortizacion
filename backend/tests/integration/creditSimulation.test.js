@@ -264,6 +264,65 @@ describe('Integración: Simulación de Créditos Pública y PDF (/api/simulation
     });
   });
 
+  describe('Frecuencia de pago y póliza de desgravamen propia', () => {
+    test('el microcrédito admite pagos trimestrales', async () => {
+      const micro = await CreditType.findOne({ where: { nombre: 'Microcrédito' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: micro.id,
+        amount: 6000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'TRIMESTRAL',
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.simulation.frecuenciaPago).toBe('TRIMESTRAL');
+      expect(res.body.data.rows).toHaveLength(8);
+      expect(res.body.data.product.frecuenciasPago).toContain('SEMESTRAL');
+    });
+
+    test('rechaza una frecuencia no habilitada en el producto', async () => {
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: creditoConsumo.id,
+        amount: 6000,
+        termMonths: 24,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'TRIMESTRAL',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/frecuencia de pago elegida no está disponible/);
+    });
+
+    test('rechaza un plazo que no es múltiplo de la frecuencia con un mensaje claro', async () => {
+      const micro = await CreditType.findOne({ where: { nombre: 'Microcrédito' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: micro.id,
+        amount: 6000,
+        termMonths: 10,
+        amortizationSystem: 'FRANCES',
+        frecuenciaPago: 'SEMESTRAL',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/múltiplo de 6 meses/);
+    });
+
+    test('en vivienda, con póliza propia endosada no se cobra el desgravamen de la entidad', async () => {
+      const inmobiliario = await CreditType.findOne({ where: { nombre: 'Crédito Inmobiliario' } });
+      const res = await request(app).post('/api/simulations/credits').send({
+        creditTypeId: inmobiliario.id,
+        amount: 30000,
+        termMonths: 120,
+        amortizationSystem: 'FRANCES',
+        polizaDesgravamenPropia: true,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.simulation.polizaDesgravamenPropia).toBe(true);
+      const nombres = res.body.data.simulation.desgloseCargos.map((c) => c.nombre);
+      expect(nombres).not.toContain('Seguro de Desgravamen');
+      expect(Number(res.body.data.rows[0].cargos)).toBe(0);
+    });
+  });
+
   describe('Comparación de sistemas sin guardar simulaciones', () => {
     test('POST /api/simulations/credits/compare devuelve francés y alemán y no crea registros', async () => {
       const { CreditSimulation } = require('../../src/models');

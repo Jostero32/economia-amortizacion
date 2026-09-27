@@ -2,6 +2,7 @@ const { body } = require('express-validator');
 const { validateRequest } = require('./validateRequest');
 const { todayISO, ageOn } = require('../utils/dates');
 const { PERSON_NAME_PATTERN, isValidCedula, isValidPhone } = require('../utils/identity');
+const { FREQUENCY_CODES } = require('../services/amortization/frequencies');
 
 const MIN_AGE = 18;
 const MAX_AGE = 100;
@@ -99,6 +100,12 @@ const validateCreditApplication = [
     .toUpperCase()
     .isIn(['FRANCES', 'ALEMAN'])
     .withMessage('El sistema de amortización debe ser FRANCES o ALEMAN.'),
+  body('frecuenciaPago')
+    .optional({ values: 'falsy' })
+    .toUpperCase()
+    .isIn(FREQUENCY_CODES)
+    .withMessage('La frecuencia de pago debe ser mensual, bimestral, trimestral o semestral.'),
+  body('polizaDesgravamenPropia').optional().isBoolean().withMessage('Indica si tienes una póliza de desgravamen propia.').toBoolean(),
   ...personalDataRules,
   body('fechaNacimiento')
     .notEmpty()

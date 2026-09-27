@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { formatMoney, formatPercent } = require('../../utils/money');
 const { formatDisplayDate, todayISO } = require('../../utils/dates');
+const { getFrequency } = require('../amortization/frequencies');
 
 const PAGE_MARGIN = 40;
 const CONTENT_WIDTH = 515; // A4 (595 pt) menos márgenes
@@ -249,6 +250,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
     ? Number(simulation.tasaNominal)
     : 12 * (Math.pow(1 + Number(simulation.tasaAnual) / 100, 1 / 12) - 1) * 100;
   const seguros = sumRows(rows, 'cargos');
+  const frecuencia = getFrequency(simulation.frecuenciaPago || 'MENSUAL');
 
   y = drawSectionTitle(doc, 'Condiciones del crédito', y);
   y = drawKeyValueBox(doc, [
@@ -257,7 +259,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
       ['Monto solicitado', formatMoney(simulation.monto)],
       ['Retenido al desembolso', formatMoney(cargosDesembolso)],
       ['Valor a recibir', formatMoney(montoLiquido), true],
-      ['Plazo', `${simulation.plazoMeses} cuotas mensuales`],
+      ['Plazo', `${simulation.plazoMeses} meses · ${rows.length} cuotas ${frecuencia.cuota}es`],
       ['Tipo de cuota', SYSTEM_LABELS[simulation.sistemaAmortizacion] || simulation.sistemaAmortizacion],
       ['Fecha de desembolso', formatDisplayDate(simulation.fechaInicio)],
     ],
@@ -266,7 +268,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
       ['Tasa efectiva anual (TEA)', formatPercent(simulation.tasaAnual)],
       ['Primera cuota', formatMoney(rows[0]?.totalPago ?? simulation.cuotaInicial), true],
       ['Total de intereses', formatMoney(simulation.totalIntereses)],
-      ['Total de seguros', formatMoney(seguros)],
+      ['Total de seguros', simulation.polizaDesgravamenPropia ? `${formatMoney(seguros)} (póliza propia)` : formatMoney(seguros)],
       ['Total a pagar en cuotas', formatMoney(simulation.totalPagar), true],
       ['Costo efectivo anual', simulation.costoEfectivoAnual != null ? formatPercent(simulation.costoEfectivoAnual) : '—'],
     ],

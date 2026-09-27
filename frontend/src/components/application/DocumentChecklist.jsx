@@ -3,7 +3,7 @@ import { clientService } from '../../services/api';
 import Badge from '../Badge';
 import Button from '../Button';
 import Alert from '../Alert';
-import { CLOSED_STATUSES, REQUIRED_DOCUMENTS, DOCUMENT_STATUS } from './applicationStatus';
+import { CLOSED_STATUSES, DOCUMENT_STATUS, requiredDocumentsFor } from './applicationStatus';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -28,8 +28,9 @@ function latestByType(documents = []) {
  */
 export default function DocumentChecklist({ application, applicationField, onUploaded }) {
   const isClosed = CLOSED_STATUSES.includes(application.estado);
+  const requiredDocuments = requiredDocumentsFor(application);
   const latest = latestByType(application.documents);
-  const pendingTypes = REQUIRED_DOCUMENTS.filter(
+  const pendingTypes = requiredDocuments.filter(
     (doc) => !latest[doc.tipo] || latest[doc.tipo].estado === 'RECHAZADO'
   );
 
@@ -90,12 +91,12 @@ export default function DocumentChecklist({ application, applicationField, onUpl
         <p className="text-[13px] text-gray-500">
           {pendingTypes.length === 0
             ? 'Ya enviaste todos los documentos requeridos.'
-            : `Te faltan ${pendingTypes.length} de ${REQUIRED_DOCUMENTS.length} documentos.`}
+            : `Te faltan ${pendingTypes.length} de ${requiredDocuments.length} documentos.`}
         </p>
       </div>
 
       <ul className="divide-y divide-gray-100">
-        {REQUIRED_DOCUMENTS.map((required) => {
+        {requiredDocuments.map((required) => {
           const doc = latest[required.tipo];
           const status = doc ? DOCUMENT_STATUS[doc.estado] : null;
           return (
@@ -141,7 +142,7 @@ export default function DocumentChecklist({ application, applicationField, onUpl
               onChange={(e) => setDocType(e.target.value)}
               className="w-full h-11 px-3 rounded-lg border border-gray-200 bg-gray-50 text-[14px]"
             >
-              {REQUIRED_DOCUMENTS.map((doc) => (
+              {requiredDocuments.map((doc) => (
                 <option key={doc.tipo} value={doc.tipo}>{doc.label}</option>
               ))}
               <option value="OTRO">Otro documento de respaldo</option>
