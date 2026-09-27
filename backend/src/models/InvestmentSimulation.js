@@ -43,10 +43,30 @@ const InvestmentSimulation = sequelize.define('InvestmentSimulation', {
     allowNull: false,
     comment: 'Capital * tasaAnual * dias / 360',
   },
+  tasaEfectiva: {
+    type: DataTypes.DECIMAL(8, 4),
+    allowNull: true,
+    comment: 'TEA del depósito con pago al vencimiento (BCE, Anexo 1)',
+  },
+  tasaRetencion: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    comment: 'Porcentaje de retención IR aplicado (0 si el plazo es >= 180 días)',
+  },
+  retencionIR: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Retención en la fuente del Impuesto a la Renta sobre el interés',
+  },
+  interesNeto: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'interesGanado - retencionIR',
+  },
   valorFinal: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
-    comment: 'Capital + interesGanado',
+    comment: 'Capital + interesNeto (valor a recibir al vencimiento)',
   },
   fechaInicio: {
     type: DataTypes.DATEONLY,

@@ -10,7 +10,7 @@ const {
   Institution,
 } = require('../models');
 const { calculateAmortization } = require('../services/amortization');
-const { calculateInvestment } = require('../services/investment/calculator');
+const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 const {
   generateCreditSimulationPDF,
   generateInvestmentSimulationPDF,
@@ -250,14 +250,8 @@ async function simulateInvestment(req, res, next) {
       );
     }
 
-    // Buscar tasa correspondiente al tramo de días
-    let applicableRate = Number(product.tasa);
-    if (product.rates && product.rates.length > 0) {
-      const matchRate = product.rates.find(r => dias >= r.plazoMinDias && dias <= r.plazoMaxDias);
-      if (matchRate) {
-        applicableRate = Number(matchRate.tasa);
-      }
-    }
+    // Tasa correspondiente al tramo de días
+    const applicableRate = resolveInvestmentRate(product, dias);
 
     const result = calculateInvestment({
       amount: P,
@@ -274,7 +268,11 @@ async function simulateInvestment(req, res, next) {
       monto: result.capital,
       plazoDias: result.plazoDias,
       tasaAnual: result.tasaAnual,
+      tasaEfectiva: result.tasaEfectiva,
       interesGanado: result.interesGanado,
+      tasaRetencion: result.tasaRetencion,
+      retencionIR: result.retencionIR,
+      interesNeto: result.interesNeto,
       valorFinal: result.valorFinal,
       fechaInicio: result.fechaInicio,
       fechaVencimiento: result.fechaVencimiento,

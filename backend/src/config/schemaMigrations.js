@@ -23,6 +23,15 @@ const additiveMigrations = [
       },
     },
   },
+  {
+    tableName: 'investment_simulations',
+    columns: {
+      tasaEfectiva: { type: DataTypes.DECIMAL(8, 4), allowNull: true },
+      tasaRetencion: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+      retencionIR: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+      interesNeto: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+    },
+  },
 ];
 
 async function runAdditiveMigrations(sequelize) {

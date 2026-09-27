@@ -29,14 +29,17 @@ const INVESTMENT_CASES = {
   },
 
   // CASO 3: 20,000 USD al 7.5% anual, 90 días
-  // 20,000 * 0.075 * 90 / 360 = 375 USD
+  // 20,000 * 0.075 * 90 / 360 = 375 USD de interés bruto
+  // Plazo < 180 días: retención IR del 3 % = 11.25 USD -> interés neto 363.75 USD
   CASE_20K_75PCT_90D: {
     capital: 20000,
     tasaAnual: 7.50,
     dias: 90,
     esperado: {
       interesGanado: 375.00,
-      valorFinal: 20375.00,
+      retencionIR: 11.25,
+      interesNeto: 363.75,
+      valorFinal: 20363.75,
     },
   },
 };

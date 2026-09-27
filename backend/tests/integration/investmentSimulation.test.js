@@ -45,6 +45,25 @@ describe('Integración: Simulación de Inversiones y PDF (/api/simulations/inves
     expect(Number(sim.valorFinal)).toBe(Number(sim.monto) + Number(sim.interesGanado));
   });
 
+  test('a 90 días aplica la tasa del tramo 61-90 y retiene el 3 % del interés', async () => {
+    const res = await request(app)
+      .post('/api/simulations/investments')
+      .send({
+        investmentProductId: sampleInvProduct.id,
+        amount: 15000,
+        termDays: 90,
+      });
+
+    expect(res.status).toBe(201);
+    const sim = res.body.data.simulation;
+    // Tramo 61-90 días del seed: 4.40 % -> 15,000 * 0.044 * 90 / 360 = 165.00
+    expect(Number(sim.tasaAnual)).toBe(4.4);
+    expect(Number(sim.interesGanado)).toBe(165);
+    expect(Number(sim.retencionIR)).toBe(4.95);
+    expect(Number(sim.interesNeto)).toBe(160.05);
+    expect(Number(sim.valorFinal)).toBe(15160.05);
+  });
+
   test('rechaza simulación con monto menor al mínimo del producto de inversión (Código 400)', async () => {
     const res = await request(app)
       .post('/api/simulations/investments')

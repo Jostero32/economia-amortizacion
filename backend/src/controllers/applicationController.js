@@ -5,12 +5,13 @@ const {
   InvestmentSimulation,
   CreditType,
   InvestmentProduct,
+  InvestmentRate,
   Document,
   User,
 } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../utils/auditLogger');
-const { calculateInvestment } = require('../services/investment/calculator');
+const { calculateInvestment, resolveInvestmentRate } = require('../services/investment/calculator');
 
 function generateApplicationCode(prefix) {
   const year = new Date().getFullYear();
@@ -220,7 +221,9 @@ async function createInvestmentApplication(req, res, next) {
     }
 
     if (!simulation) {
-      const product = await InvestmentProduct.findByPk(investmentProductId);
+      const product = await InvestmentProduct.findByPk(investmentProductId, {
+        include: [{ model: InvestmentRate, as: 'rates', where: { activo: true }, required: false }],
+      });
       if (!product || !product.activo) {
         return errorResponse(res, 'Producto de inversión no válido.', 404);
       }
@@ -233,7 +236,8 @@ async function createInvestmentApplication(req, res, next) {
         return errorResponse(res, 'El plazo está fuera de los límites del producto de inversión.', 400);
       }
 
-      tasaAplicada = product.tasa || 5.0;
+      // Tasa del tramo que corresponde al plazo solicitado
+      tasaAplicada = resolveInvestmentRate(product, Number(plazoDias));
       const investmentResult = calculateInvestment({
         amount: Number(monto),
         termDays: Number(plazoDias),
