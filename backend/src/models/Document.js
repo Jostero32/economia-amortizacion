@@ -49,7 +49,7 @@ const Document = sequelize.define('Document', {
   estado: {
     type: DataTypes.ENUM('PENDIENTE', 'VALIDADO', 'RECHAZADO'),
     defaultValue: 'PENDIENTE',
-    comment: 'Validación biométrica simulada para fines académicos',
+    comment: 'Revisión manual del documento por el asesor',
   },
   comentarioRevision: {
     type: DataTypes.TEXT,

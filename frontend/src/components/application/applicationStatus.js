@@ -31,10 +31,10 @@ export const STATUS_TRANSITIONS = {
 export const STATUSES_REQUIRING_NOTE = ['PENDIENTE_DOCUMENTOS', 'RECHAZADA'];
 
 export const REQUIRED_DOCUMENTS = [
-  { tipo: 'CEDULA', label: 'Cédula de identidad', hint: 'Ambos lados, legible.' },
+  { tipo: 'CEDULA', label: 'Cédula de identidad', hint: 'Foto legible del anverso (JPG o PNG), donde se vea tu fotografía.' },
   { tipo: 'COMPROBANTE_DOMICILIO', label: 'Comprobante de domicilio', hint: 'Planilla de luz, agua o teléfono de los últimos 3 meses.' },
   { tipo: 'COMPROBANTE_INGRESOS', label: 'Comprobante de ingresos', hint: 'Rol de pagos, certificado laboral o declaración de impuestos.' },
-  { tipo: 'SELFIE', label: 'Selfie con tu cédula', hint: 'Para la validación biométrica (simulada).' },
+  { tipo: 'SELFIE', label: 'Selfie con tu cédula', hint: 'Tómala con la cámara sosteniendo tu cédula: se compara tu rostro con la foto del documento.' },
 ];
 
 export const POLICY_DOCUMENT = {

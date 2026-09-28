@@ -101,7 +101,7 @@ export default function ApplicationsList() {
           <Badge variant="bce" iconName="assignment">Bandeja de entrada</Badge>
           <h1 className="font-headline-lg text-[24px] sm:text-[28px] text-primary font-bold mt-1">Gestión de solicitudes</h1>
           <p className="font-body-sm text-[13px] text-on-surface-variant">
-            Revisión integral de créditos e inversiones, documentos y biometría simulada.
+            Revisión integral de créditos e inversiones, documentos y biometría (reconocimiento facial).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -31,3 +31,6 @@ yarn-error.log*
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
+
+# Modelos de reconocimiento facial (se copian desde node_modules)
+public/models/

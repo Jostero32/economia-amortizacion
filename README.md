@@ -148,7 +148,14 @@ con $k$ = meses. El sistema lo calcula mes a mes, redondeando a centavos, y mues
 - La frecuencia de pago y la póliza de desgravamen propia deben coincidir con la simulación; con póliza propia se exige además el documento de la póliza.
 - Edad: mayor de edad y máximo 80 años al terminar el crédito.
 - Cédula ecuatoriana con dígito verificador, teléfono celular o fijo válido y autorización de consulta al buró de crédito. En inversiones se exige la declaración de licitud de fondos.
-- Estados: Recibida → En revisión → (Documentos pendientes) → Aprobada / No aprobada. Solo se aprueba desde En revisión, con los 4 documentos validados y la biometría (simulada) aprobada. Rechazar la solicitud o un documento exige indicar el motivo al cliente. Una solicitud resuelta no admite cambios ni documentos.
+- Estados: Recibida → En revisión → (Documentos pendientes) → Aprobada / No aprobada. Solo se aprueba desde En revisión, con los 4 documentos validados y la biometría aprobada por el asesor (ver 4.1.1). Rechazar la solicitud o un documento exige indicar el motivo al cliente. Una solicitud resuelta no admite cambios ni documentos.
+
+### 4.1.1 Validación biométrica con reconocimiento facial
+- La cédula y la selfie deben ser imágenes (JPG, PNG o WEBP). La selfie se toma con la cámara del dispositivo (requiere HTTPS o localhost), sosteniendo la cédula, y exige la autorización expresa del cliente para tratar su dato biométrico (LOPDP); antes de enviarla se comprueba que haya un rostro visible.
+- El asesor pulsa **Comparar rostros**: el navegador descarga ambas imágenes, detecta el rostro principal de cada una (SSD MobileNet v1) y calcula un descriptor facial de 128 dimensiones (`@vladmandic/face-api`, TensorFlow.js). Las fotos no salen del sistema: no se usa ningún servicio externo.
+- Resultado según la distancia euclidiana *d* entre descriptores: **Coincide** si *d* ≤ 0,45; **Dudoso** si 0,45 < *d* ≤ 0,60 (revisión manual); **No coincide** si *d* > 0,60. El porcentaje mostrado es un nivel de coincidencia 100 / (1 + e^((d − 0,525)/0,04)), una escala para leer la distancia, no una probabilidad.
+- Los umbrales son más estrictos que el 0,6 habitual de face-api porque, en pruebas con fotos de personas distintas de rasgos parecidos, aparecieron distancias desde 0,47. El resultado (nivel, distancia, veredicto y fecha) se guarda en la solicitud y en la auditoría, pero **la decisión final es del asesor**: el reconocimiento no aprueba la biometría por sí solo.
+- Los modelos (~12 MB) se copian desde `node_modules` a `frontend/public/models/face-api` en `npm run dev`/`npm run build` y se sirven desde el mismo dominio.
 
 ### 4.2 Matriz de permisos
 
@@ -187,7 +194,7 @@ Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abo
 | Rol | Correo | Contraseña | Permisos |
 | :--- | :--- | :--- | :--- |
 | **ADMIN** | `admin@finanecuador.local` | `Admin123!` | Configuración total, tasas, cobros, productos, auditoría. |
-| **ASESOR** | `asesor@finanecuador.local` | `Asesor123!` | Revisión de solicitudes, documentos y validación biométrica simulada. |
+| **ASESOR** | `asesor@finanecuador.local` | `Asesor123!` | Revisión de solicitudes, documentos y validación biométrica asistida por reconocimiento facial. |
 | **CLIENTE** | `cliente@finanecuador.local` | `Cliente123!` | Solicitud formal de crédito/inversión y subida de expedientes. |
 
 *(La pantalla de Login incluye botones de carga rápida con 1 solo clic).*
@@ -198,5 +205,5 @@ Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abo
 
 - Proyecto universitario desarrollado para la materia **Ingeniería Económica**.
 - Las tasas son valores referenciales tomados de las resoluciones del **Banco Central del Ecuador a Septiembre de 2026**. Los productos marcados como *valores demostrativos* (montos, plazos y la prima del desgravamen) son ilustrativos.
-- La validación biométrica es un flujo simulado mediante revisión manual del asesor.
+- La validación biométrica usa reconocimiento facial en el navegador como apoyo al asesor; no incluye prueba de vida (*liveness*), por lo que no reemplaza a un servicio biométrico certificado.
 - La plataforma no otorga créditos reales ni capta recursos reales del público.

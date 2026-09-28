@@ -1,9 +1,10 @@
 /**
- * Pruebas de Integración - Carga y Revisión de Documentos (Biometría Simulada)
+ * Pruebas de Integración - Carga y Revisión de Documentos y Reconocimiento Facial
  * Endpoints:
  * - POST /api/documents (Subida de Cédula y Selfie)
  * - GET /api/documents/:id
  * - PATCH /api/admin/documents/:id/status (Revisión por Asesor/Admin)
+ * - PATCH /api/admin/applications/:id/biometric (Resultado del reconocimiento facial)
  */
 
 const request = require('supertest');
@@ -133,7 +134,7 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
     expect(res.status).toBe(403);
   });
 
-  test('POST /api/documents permite subir selfie para biometría simulada', async () => {
+  test('POST /api/documents exige autorizar el tratamiento biométrico para subir la selfie', async () => {
     const res = await request(app)
       .post('/api/documents')
       .set('Authorization', `Bearer ${clientToken}`)
@@ -141,9 +142,34 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
       .field('creditApplicationId', application.id)
       .attach('archivo', Buffer.from('simulated-selfie-photo'), 'selfie_rostro.png');
 
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('autorizar');
+  });
+
+  test('POST /api/documents permite subir la selfie con consentimiento biométrico', async () => {
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Authorization', `Bearer ${clientToken}`)
+      .field('tipo', 'SELFIE')
+      .field('consentimientoBiometrico', 'true')
+      .field('creditApplicationId', application.id)
+      .attach('archivo', Buffer.from('simulated-selfie-photo'), 'selfie_rostro.png');
+
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.document.tipo).toBe('SELFIE');
+  });
+
+  test('POST /api/documents rechaza la cédula en PDF: el reconocimiento facial necesita una imagen', async () => {
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Authorization', `Bearer ${clientToken}`)
+      .field('tipo', 'CEDULA')
+      .field('creditApplicationId', application.id)
+      .attach('archivo', Buffer.from('%PDF-1.4 cedula'), 'cedula.pdf');
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('no PDF');
   });
 
   test('PATCH /api/admin/documents/:id/status permite a un Asesor aprobar documento', async () => {
@@ -184,6 +210,41 @@ describe('Integración: Carga de Documentos y Biometría (/api/documents)', () =
       .set('Authorization', `Bearer ${advisorToken}`)
       .send({ estado: 'RECHAZADO', comentarioRevision: 'La imagen está borrosa.' });
     expect(withReason.status).toBe(200);
+  });
+
+  test('PATCH /api/admin/applications/:id/biometric registra el resultado del reconocimiento facial', async () => {
+    const res = await request(app)
+      .patch(`/api/admin/applications/${application.id}/biometric`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ tipo: 'CREDITO', similitud: 91.27, distancia: 0.4183, resultado: 'COINCIDE' });
+
+    expect(res.status).toBe(200);
+    expect(Number(res.body.data.application.biometriaSimilitud)).toBe(91.27);
+    expect(Number(res.body.data.application.biometriaDistancia)).toBe(0.4183);
+    expect(res.body.data.application.biometriaResultado).toBe('COINCIDE');
+    expect(res.body.data.application.biometriaComparadaEn).toBeDefined();
+    // Es evidencia de apoyo: no aprueba la biometría por sí solo
+    expect(res.body.data.application.biometriaValidada).toBe(false);
+  });
+
+  test('PATCH /api/admin/applications/:id/biometric valida los datos y es solo para asesores', async () => {
+    const invalid = await request(app)
+      .patch(`/api/admin/applications/${application.id}/biometric`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ tipo: 'CREDITO', similitud: 140, distancia: 0.4, resultado: 'COINCIDE' });
+    expect(invalid.status).toBe(400);
+
+    const badResult = await request(app)
+      .patch(`/api/admin/applications/${application.id}/biometric`)
+      .set('Authorization', `Bearer ${advisorToken}`)
+      .send({ tipo: 'CREDITO', similitud: 80, distancia: 0.4, resultado: 'QUIZAS' });
+    expect(badResult.status).toBe(400);
+
+    const asClient = await request(app)
+      .patch(`/api/admin/applications/${application.id}/biometric`)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({ tipo: 'CREDITO', similitud: 99, distancia: 0.1, resultado: 'COINCIDE' });
+    expect(asClient.status).toBe(403);
   });
 
   test('PATCH /api/admin/applications/:id/status impide aprobar un expediente incompleto', async () => {

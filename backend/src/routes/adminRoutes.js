@@ -34,6 +34,7 @@ router.get('/applications', advisorAuth, applicationController.getAllApplication
 router.get('/investment-applications/:id', advisorAuth, applicationController.getInvestmentApplicationById);
 router.get('/applications/:id', advisorAuth, applicationController.getCreditApplicationById);
 router.patch('/applications/:id/status', advisorAuth, applicationController.updateApplicationStatus);
+router.patch('/applications/:id/biometric', advisorAuth, applicationController.recordBiometricCheck);
 
 // Documentos y Validación Biométrica Simulada
 router.get('/documents', advisorAuth, documentController.getAllDocuments);

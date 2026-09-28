@@ -4,6 +4,7 @@ import Badge from '../Badge';
 import Button from '../Button';
 import Alert from '../Alert';
 import Modal from '../Modal';
+import BiometricCheck from './BiometricCheck';
 import {
   STATUS_LABELS,
   STATUS_TRANSITIONS,
@@ -162,7 +163,10 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
         {success && <Alert type="success">{success}</Alert>}
 
         {isClosed ? (
-          <Alert type="info">La solicitud ya fue resuelta y no admite cambios.</Alert>
+          <>
+            <Alert type="info">La solicitud ya fue resuelta y no admite cambios.</Alert>
+            {application.biometriaResultado && <BiometricCheck application={application} tipo={tipo} readOnly />}
+          </>
         ) : (
           <>
             <div className="space-y-1.5">
@@ -185,11 +189,23 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
               )}
             </div>
 
+            {/* Propone la decisión según el resultado; el asesor puede cambiarla antes de guardar */}
+            <BiometricCheck
+              application={application}
+              tipo={tipo}
+              onResult={({ resultado }) => {
+                if (resultado === 'COINCIDE') setBiometria(true);
+                if (resultado === 'NO_COINCIDE') setBiometria(false);
+              }}
+            />
+
             <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-lg bg-surface-container-low border border-surface-container-high">
               <input type="checkbox" checked={biometria} onChange={(e) => setBiometria(e.target.checked)} className="h-4 w-4 mt-0.5 accent-secondary" />
               <span className="text-[13px]">
                 <strong className="text-primary">Validación biométrica aprobada</strong>
-                <span className="block text-[12px] text-gray-500">La selfie corresponde a la persona de la cédula (simulado).</span>
+                <span className="block text-[12px] text-gray-500">
+                  Confirmo que la selfie corresponde a la persona de la cédula (apoyado en el reconocimiento facial).
+                </span>
               </span>
             </label>
 

@@ -145,7 +145,26 @@ const CreditApplication = sequelize.define('CreditApplication', {
   biometriaValidada: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
-    comment: 'Validación biométrica simulada para fines académicos',
+    comment: 'Decisión del asesor sobre la validación biométrica (cédula vs. selfie)',
+  },
+  biometriaSimilitud: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    comment: 'Nivel de coincidencia (%) entre el rostro de la cédula y el de la selfie (reconocimiento facial)',
+  },
+  biometriaDistancia: {
+    type: DataTypes.DECIMAL(6, 4),
+    allowNull: true,
+    comment: 'Distancia euclidiana entre descriptores faciales (menor = más parecidos)',
+  },
+  biometriaResultado: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'COINCIDE, DUDOSO o NO_COINCIDE según el umbral de distancia',
+  },
+  biometriaComparadaEn: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
   asesorId: {
     type: DataTypes.UUID,

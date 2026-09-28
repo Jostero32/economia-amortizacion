@@ -120,6 +120,9 @@ export const clientService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   getDocumentUrl: (id) => `${API_BASE_URL}/documents/${id}`,
+  // Imagen del documento con la cookie de sesión (para el reconocimiento facial)
+  getDocumentBlob: (id) =>
+    axios.get(`${API_BASE_URL}/documents/${id}`, { responseType: 'blob', withCredentials: true }).then((res) => res.data),
   getMyCreditSimulations: () => api.get('/simulations/my'),
   getMySimulations: () => api.get('/simulations/my'),
   downloadCreditApplicationPdf: (application) =>
@@ -136,6 +139,7 @@ export const adminService = {
   getApplicationById: (id) => api.get(`/admin/applications/${id}`),
   getInvestmentApplicationById: (id) => api.get(`/admin/investment-applications/${id}`),
   updateApplicationStatus: (id, data) => api.patch(`/admin/applications/${id}/status`, data),
+  recordBiometricCheck: (id, data) => api.patch(`/admin/applications/${id}/biometric`, data),
 
   getDocuments: () => api.get('/admin/documents'),
   updateDocumentStatus: (id, data) => api.patch(`/admin/documents/${id}/status`, data),

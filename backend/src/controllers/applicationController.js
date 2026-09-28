@@ -674,6 +674,68 @@ async function updateApplicationStatus(req, res, next) {
   }
 }
 
+const BIOMETRIC_RESULTS = ['COINCIDE', 'DUDOSO', 'NO_COINCIDE'];
+
+/**
+ * Registrar el resultado del reconocimiento facial (cédula vs. selfie) calculado en el navegador
+ * del asesor. Es evidencia de apoyo: la aprobación sigue dependiendo de biometriaValidada.
+ */
+async function recordBiometricCheck(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { tipo = 'CREDITO', resultado } = req.body;
+    const similitud = Number(req.body.similitud);
+    const distancia = Number(req.body.distancia);
+
+    if (!['CREDITO', 'INVERSION'].includes(tipo)) {
+      return errorResponse(res, 'El tipo de solicitud debe ser CREDITO o INVERSION.', 400);
+    }
+    if (!Number.isFinite(similitud) || similitud < 0 || similitud > 100) {
+      return errorResponse(res, 'La similitud debe estar entre 0 y 100.', 400);
+    }
+    if (!Number.isFinite(distancia) || distancia < 0 || distancia > 10) {
+      return errorResponse(res, 'La distancia entre rostros no es válida.', 400);
+    }
+    if (!BIOMETRIC_RESULTS.includes(resultado)) {
+      return errorResponse(res, `Resultado inválido. Debe ser uno de: ${BIOMETRIC_RESULTS.join(', ')}`, 400);
+    }
+
+    const isInvestment = tipo === 'INVERSION';
+    const application = isInvestment
+      ? await InvestmentApplication.findByPk(id)
+      : await CreditApplication.findByPk(id);
+    if (!application) {
+      return errorResponse(res, 'Solicitud no encontrada.', 404);
+    }
+    if (CLOSED_STATUSES.includes(application.estado)) {
+      return errorResponse(res, 'La solicitud ya fue resuelta y no se puede modificar.', 400);
+    }
+
+    application.biometriaSimilitud = roundToTwo(similitud);
+    application.biometriaDistancia = Math.round(distancia * 10000) / 10000;
+    application.biometriaResultado = resultado;
+    application.biometriaComparadaEn = new Date();
+    await application.save();
+
+    await logAudit({
+      req,
+      accion: 'VALIDACION_BIOMETRICA',
+      entidad: isInvestment ? 'InvestmentApplication' : 'CreditApplication',
+      entidadId: application.id,
+      detalles: {
+        similitud: application.biometriaSimilitud,
+        distancia: application.biometriaDistancia,
+        resultado,
+        metodo: 'face-api (descriptores faciales de 128 dimensiones)',
+      },
+    });
+
+    return successResponse(res, { application }, 200, 'Resultado biométrico registrado.');
+  } catch (error) {
+    next(error);
+  }
+}
+
 function sendPdfHeaders(res, fileName) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
@@ -771,4 +833,5 @@ module.exports = {
   getInvestmentApplicationPDF,
   getAllApplications,
   updateApplicationStatus,
+  recordBiometricCheck,
 };

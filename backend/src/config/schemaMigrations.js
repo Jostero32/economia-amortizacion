@@ -1,5 +1,13 @@
 const { DataTypes } = require('sequelize');
 
+// Resultado del reconocimiento facial (cédula vs. selfie) que registra el asesor
+const biometricColumns = {
+  biometriaSimilitud: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+  biometriaDistancia: { type: DataTypes.DECIMAL(6, 4), allowNull: true },
+  biometriaResultado: { type: DataTypes.STRING(20), allowNull: true },
+  biometriaComparadaEn: { type: DataTypes.DATE, allowNull: true },
+};
+
 const additiveMigrations = [
   {
     tableName: 'investment_applications',
@@ -129,6 +137,8 @@ const additiveMigrations = [
       declaraLicitudFondos: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     },
   },
+  { tableName: 'credit_applications', columns: biometricColumns },
+  { tableName: 'investment_applications', columns: biometricColumns },
 ];
 
 // Valores nuevos de tipos ENUM existentes (en bases nuevas los crea sequelize.sync)

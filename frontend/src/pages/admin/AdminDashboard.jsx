@@ -161,7 +161,7 @@ export default function AdminDashboard() {
       {/* Solicitudes para Asesor */}
       <Card
         title="Solicitudes que requieren atención del Asesor"
-        subtitle="Verificación de documentos probatorios y validación biométrica simulada"
+        subtitle="Verificación de documentos probatorios y validación biométrica con reconocimiento facial"
         action={
           <Link
             to="/admin/solicitudes"
