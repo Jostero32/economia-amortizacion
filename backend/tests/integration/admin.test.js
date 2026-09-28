@@ -150,6 +150,12 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
       expect(res.body.success).toBe(true);
       expect(res.body.data.logo).toMatch(/^\/uploads\/marca-/);
       expect(res.body.data.institution.logo).toBe(res.body.data.logo);
+
+      // Detrás del proxy con prefijo solo llegan las rutas /api al backend
+      const viaApi = await request(app).get(`/api${res.body.data.logo}`);
+      expect(viaApi.status).toBe(200);
+      const direct = await request(app).get(res.body.data.logo);
+      expect(direct.status).toBe(200);
     });
 
     test('rechaza archivos que no son imágenes como logotipo', async () => {
@@ -290,6 +296,31 @@ describe('Integración: Control de Acceso por Roles y CRUD Administrativo (/api/
       expect(res.body.success).toBe(true);
       expect(res.body.data.charge.id).toBeDefined();
       expect(res.body.data.charge.categoria).toBe('GASTO_TERCEROS');
+    });
+
+    test('ADMIN puede registrar una donación voluntaria, pero no como obligatoria', async () => {
+      const donation = {
+        nombre: 'Donación Fundación Test',
+        categoria: 'DONACION',
+        tipo: 'VALOR_FIJO',
+        valor: 5.00,
+        aplicacion: 'POR_CUOTA',
+        activo: false,
+      };
+
+      const ok = await request(app)
+        .post('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ...donation, obligatorio: false });
+      expect(ok.status).toBe(201);
+      expect(ok.body.data.charge.categoria).toBe('DONACION');
+
+      const rejected = await request(app)
+        .post('/api/admin/charges')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ...donation, nombre: 'Donación Obligatoria Test', obligatorio: true });
+      expect(rejected.status).toBe(400);
+      expect(rejected.body.errors.obligatorio).toBeDefined();
     });
 
     test('rechaza cobros sin categoría válida o con porcentaje fuera de rango, con error por campo', async () => {

@@ -8,6 +8,8 @@ import Alert from '../../components/Alert';
 import Badge from '../../components/Badge';
 import { LoadingState } from '../../components/Spinner';
 import { FREQUENCY_ORDER, getFrequency } from '../../utils/frequencies';
+import { formatPercent } from '../../utils/format';
+import { effectiveToNominalRate, effectiveToPeriodicRate } from '../../utils/rates';
 
 export default function CreditTypeForm() {
   const { id } = useParams();
@@ -97,7 +99,7 @@ export default function CreditTypeForm() {
     // Validación estricta en frontend contra el techo legal del BCE (Requerimiento 31)
     if (selectedSegment && Number(formData.tasaInstitucion) > Number(selectedSegment.tasaMaxima)) {
       setError(
-        `Operación rechazada: La tasa configurada (${formData.tasaInstitucion}%) supera la tasa activa máxima fijada por el BCE (${selectedSegment.tasaMaxima}%).`
+        `Operación rechazada: La tasa configurada (${formData.tasaInstitucion}%) supera la tasa activa máxima fijada por el BCE para el segmento ${selectedSegment.nombre} (${selectedSegment.tasaMaxima}%). Baja la tasa o, si el producto corresponde a otro segmento, cámbialo.`
       );
       return;
     }
@@ -250,7 +252,10 @@ export default function CreditTypeForm() {
               {isExceedingMax ? (
                 <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-900 text-[12px] flex items-center gap-2">
                   <span className="material-symbols-outlined text-red-600 text-[18px]">gavel</span>
-                  <span><strong>¡Tasa Máxima Excedida!</strong> El valor ingresado supera el techo legal del Banco Central.</span>
+                  <span>
+                    <strong>¡Tasa Máxima Excedida!</strong> El valor ingresado supera el techo legal del Banco Central
+                    ({Number(selectedSegment.tasaMaxima).toFixed(2)}% TEA). Baja la tasa o, si el producto corresponde a otro segmento, cámbialo.
+                  </span>
                 </div>
               ) : isCloseToMax ? (
                 <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[12px] flex items-center gap-2">
@@ -271,9 +276,18 @@ export default function CreditTypeForm() {
             onChange={handleChange}
             suffix="%"
             placeholder="15.50"
+            min="0.01"
+            max="100"
             required
-            hint="Tasa pactada para los clientes. Debe ser menor o igual al techo legal del BCE."
+            hint="Se ingresa como TEA (efectiva anual), igual que el techo del BCE. Ej.: una TEA de 12,68 % equivale a 12 % nominal (1 % mensual)."
           />
+          {Number(formData.tasaInstitucion) > 0 && (
+            <p className="-mt-2 text-[12px] text-on-surface-variant">
+              Equivale a <strong className="text-primary">{formatPercent(effectiveToNominalRate(formData.tasaInstitucion))}</strong> nominal
+              anual y <strong className="text-primary">{formatPercent(effectiveToPeriodicRate(formData.tasaInstitucion), 4)}</strong> mensual
+              (pagos mensuales, base 360 días).
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormInput

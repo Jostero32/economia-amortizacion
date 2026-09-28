@@ -11,8 +11,8 @@ export const resolveApiAssetUrl = (assetPath) => {
     return `${base}${assetPath.slice(1)}`;
   }
 
-  const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, '');
-  return `${apiOrigin}${assetPath}`;
+  // Se pide por /api/uploads/...: detrás del proxy solo las rutas /api llegan al backend
+  return `${API_BASE_URL.replace(/\/$/, '')}${assetPath}`;
 };
 
 const api = axios.create({

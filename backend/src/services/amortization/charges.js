@@ -12,6 +12,7 @@
  *   de vivienda; en el resto requiere la aceptación del cliente.
  * - SEGURO: otros seguros (incendio, vehículo).
  * - GASTO_TERCEROS: pagos a terceros (avalúo, notaría, registro).
+ * - DONACION: aporte voluntario a una fundación u obra social; nunca es obligatorio.
  *
  * Momento de cobro según `aplicacion`:
  * - UNA_VEZ: al desembolso, se descuenta del monto que recibe el cliente.
@@ -20,7 +21,7 @@
 
 const { roundToTwo } = require('../../utils/money');
 
-const CHARGE_CATEGORIES = ['IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS'];
+const CHARGE_CATEGORIES = ['IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS', 'DONACION'];
 
 // Segmentos de vivienda: el seguro de desgravamen es obligatorio (Superintendencia de Bancos)
 const SEGMENTS_REQUIRING_LIFE_INSURANCE = ['INMOBILIARIO', 'VIVIENDA_VIS', 'VIVIENDA_VIP'];

@@ -36,7 +36,7 @@ const additiveMigrations = [
     tableName: 'charges',
     columns: {
       categoria: {
-        type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS'),
+        type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS', 'DONACION'),
         allowNull: false,
         defaultValue: 'GASTO_TERCEROS',
       },
@@ -134,6 +134,7 @@ const additiveMigrations = [
 // Valores nuevos de tipos ENUM existentes (en bases nuevas los crea sequelize.sync)
 const enumValueMigrations = [
   { enumName: 'enum_documents_tipo', value: 'POLIZA_DESGRAVAMEN' },
+  { enumName: 'enum_charges_categoria', value: 'DONACION' },
 ];
 
 async function runAdditiveMigrations(sequelize) {

@@ -12,7 +12,7 @@ const Charge = sequelize.define('Charge', {
     allowNull: false,
   },
   categoria: {
-    type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS'),
+    type: DataTypes.ENUM('IMPUESTO', 'SEGURO_DESGRAVAMEN', 'SEGURO', 'GASTO_TERCEROS', 'DONACION'),
     allowNull: false,
     defaultValue: 'GASTO_TERCEROS',
     comment: 'Impuesto de ley (SOLCA), seguro de desgravamen, otro seguro o gasto a terceros. Las comisiones por conceder el crédito están prohibidas por ley.',

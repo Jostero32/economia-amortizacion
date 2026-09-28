@@ -23,7 +23,7 @@ function chargeRules(isUpdate) {
       .withMessage('El nombre debe tener entre 3 y 150 caracteres.'),
     field('categoria')
       .isIn(CHARGE_CATEGORIES)
-      .withMessage('Elige una categoría válida: impuesto de ley, seguro o gasto a terceros.'),
+      .withMessage('Elige una categoría válida: impuesto de ley, seguro, gasto a terceros o donación.'),
     field('tipo')
       .isIn(CHARGE_TYPES)
       .withMessage('El tipo de cobro debe ser porcentaje o valor fijo.'),
@@ -42,7 +42,9 @@ function chargeRules(isUpdate) {
       .optional()
       .isIn(CHARGE_BASES)
       .withMessage('La base de cálculo debe ser el monto, el saldo o la cuota.'),
-    body('obligatorio').optional().isBoolean().withMessage('El campo obligatorio debe ser verdadero o falso.').toBoolean(),
+    body('obligatorio').optional().isBoolean().withMessage('El campo obligatorio debe ser verdadero o falso.').toBoolean()
+      .custom((value, { req }) => !(value === true && req.body.categoria === 'DONACION'))
+      .withMessage('Una donación es voluntaria: no puede marcarse como obligatoria.'),
     body('anualizarSiPlazoMenorAnio').optional().isBoolean().withMessage('El campo anualizar debe ser verdadero o falso.').toBoolean(),
     body('activo').optional().isBoolean().withMessage('El estado debe ser verdadero o falso.').toBoolean(),
     body('creditTypeId')

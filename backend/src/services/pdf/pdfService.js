@@ -53,7 +53,7 @@ function createDocument(outputStream) {
   return doc;
 }
 
-function drawHeader(doc, institution, subtitle, color) {
+function drawHeader(doc, institution, color) {
   doc.rect(PAGE_MARGIN, PAGE_MARGIN, CONTENT_WIDTH, 60).fill(color);
 
   let textX = PAGE_MARGIN + 15;
@@ -72,7 +72,7 @@ function drawHeader(doc, institution, subtitle, color) {
   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16)
     .text(institution?.nombre || 'FinanEcuador Demo', textX, PAGE_MARGIN + 12, { width: CONTENT_WIDTH - (textX - PAGE_MARGIN) - 10 });
   doc.font('Helvetica').fontSize(9)
-    .text(`${subtitle} | RUC: ${institution?.ruc || '—'} | Tel: ${institution?.telefono || '—'}`, textX, PAGE_MARGIN + 36);
+    .text(`RUC: ${institution?.ruc || '—'} · Tel: ${institution?.telefono || '—'}`, textX, PAGE_MARGIN + 36);
 }
 
 function drawTitle(doc, title, reference, y) {
@@ -92,21 +92,38 @@ function drawSectionTitle(doc, text, y) {
  * Pares etiqueta/valor en dos columnas dentro de un recuadro
  */
 function drawKeyValueBox(doc, columns, y) {
-  const rowHeight = 15;
-  const rows = Math.max(...columns.map((column) => column.length));
-  const height = rows * rowHeight + 16;
-  doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, height).lineWidth(1).strokeColor(BORDER).stroke();
-
+  const minRowHeight = 15;
+  const rowGap = 4;
+  const fontSize = 8.5;
   const padding = 12;
   const gap = 18;
   const columnWidth = (CONTENT_WIDTH - padding * 2 - gap * (columns.length - 1)) / columns.length;
+  const labelWidth = columnWidth * 0.42;
+  const valueWidth = columnWidth - labelWidth - 4;
+
+  // Altura real de cada par: un texto largo baja de línea sin encimarse con la fila siguiente
+  const rowHeightOf = ([label, value, strong]) => {
+    doc.font('Helvetica').fontSize(fontSize);
+    const labelHeight = doc.heightOfString(String(label), { width: labelWidth });
+    doc.font(strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+    const valueHeight = doc.heightOfString(String(value), { width: valueWidth });
+    return Math.max(minRowHeight, Math.max(labelHeight, valueHeight) + rowGap);
+  };
+
+  const columnHeights = columns.map((items) => items.reduce((sum, item) => sum + rowHeightOf(item), 0));
+  const height = Math.max(...columnHeights) + 16;
+  doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, height).lineWidth(1).strokeColor(BORDER).stroke();
+
   columns.forEach((items, columnIndex) => {
     const x = PAGE_MARGIN + padding + columnIndex * (columnWidth + gap);
-    items.forEach(([label, value, strong], rowIndex) => {
-      const rowY = y + 9 + rowIndex * rowHeight;
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8.5).text(label, x, rowY, { width: columnWidth * 0.5, lineBreak: false });
-      doc.fillColor(DARK).font(strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5)
-        .text(value, x + columnWidth * 0.5, rowY, { width: columnWidth * 0.5, align: 'right', lineBreak: false });
+    let rowY = y + 9;
+    items.forEach((item) => {
+      const [label, value, strong] = item;
+      const rowHeight = rowHeightOf(item);
+      doc.fillColor(GRAY).font('Helvetica').fontSize(fontSize).text(String(label), x, rowY, { width: labelWidth });
+      doc.fillColor(DARK).font(strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize)
+        .text(String(value), x + labelWidth + 4, rowY, { width: valueWidth, align: 'right' });
+      rowY += rowHeight;
     });
   });
   return y + height + 12;
@@ -145,7 +162,7 @@ const TABLE_COLUMNS = [
   { header: 'Saldo inicial', width: 75, align: 'right', value: (row) => formatMoney(row.saldoInicial) },
   { header: 'Capital', width: 68, align: 'right', value: (row) => formatMoney(row.capital) },
   { header: 'Interés', width: 62, align: 'right', value: (row) => formatMoney(row.interes) },
-  { header: 'Seguros', width: 58, align: 'right', value: (row) => formatMoney(row.cargos) },
+  { header: 'Seguros/cargos', width: 58, align: 'right', value: (row) => formatMoney(row.cargos) },
   { header: 'Cuota a pagar', width: 78, align: 'right', value: (row) => formatMoney(row.totalPago), bold: true },
   { header: 'Saldo final', width: 80, align: 'right', value: (row) => formatMoney(row.saldoFinal) },
 ];
@@ -222,7 +239,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
   const doc = createDocument(outputStream);
   const color = institution?.colorPrincipal || '#0f766e';
 
-  drawHeader(doc, institution, 'Crédito', color);
+  drawHeader(doc, institution, color);
   const reference = application ? `Solicitud ${application.codigo}` : `Simulación ${String(simulation.id).slice(0, 8)}`;
   let y = drawTitle(doc, application ? 'SOLICITUD DE CRÉDITO Y TABLA DE AMORTIZACIÓN' : 'SIMULACIÓN DE CRÉDITO Y TABLA DE AMORTIZACIÓN', reference, 115);
 
@@ -259,7 +276,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
       ['Monto solicitado', formatMoney(simulation.monto)],
       ['Retenido al desembolso', formatMoney(cargosDesembolso)],
       ['Valor a recibir', formatMoney(montoLiquido), true],
-      ['Plazo', `${simulation.plazoMeses} meses · ${rows.length} cuotas ${frecuencia.cuota}es`],
+      ['Plazo', `${simulation.plazoMeses} meses (${rows.length} cuotas ${frecuencia.cuota}es)`],
       ['Tipo de cuota', SYSTEM_LABELS[simulation.sistemaAmortizacion] || simulation.sistemaAmortizacion],
       ['Fecha de desembolso', formatDisplayDate(simulation.fechaInicio)],
     ],
@@ -268,7 +285,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
       ['Tasa efectiva anual (TEA)', formatPercent(simulation.tasaAnual)],
       ['Primera cuota', formatMoney(rows[0]?.totalPago ?? simulation.cuotaInicial), true],
       ['Total de intereses', formatMoney(simulation.totalIntereses)],
-      ['Total de seguros', simulation.polizaDesgravamenPropia ? `${formatMoney(seguros)} (póliza propia)` : formatMoney(seguros)],
+      ['Seguros y otros cargos', simulation.polizaDesgravamenPropia ? `${formatMoney(seguros)} (póliza propia)` : formatMoney(seguros)],
       ['Total a pagar en cuotas', formatMoney(simulation.totalPagar), true],
       ['Costo efectivo anual', simulation.costoEfectivoAnual != null ? formatPercent(simulation.costoEfectivoAnual) : '—'],
     ],
@@ -276,7 +293,7 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
 
   const desglose = (simulation.desgloseCargos || []).filter((cargo) => Number(cargo.valor) > 0);
   if (desglose.length > 0) {
-    y = drawSectionTitle(doc, 'Impuestos y seguros', y);
+    y = drawSectionTitle(doc, 'Impuestos, seguros y otros cargos', y);
     desglose.forEach((cargo) => {
       const momento = cargo.momento === 'DESEMBOLSO' ? 'retenido al desembolso' : 'cobrado en las cuotas';
       doc.fillColor(DARK).font('Helvetica').fontSize(8.5)
@@ -299,7 +316,11 @@ function generateCreditSimulationPDF({ institution, simulation, rows, applicatio
     doc,
     'INFORMACIÓN IMPORTANTE',
     'Valores referenciales: no constituyen aprobación ni contrato de crédito. Intereses calculados sobre saldos con base comercial de 360 días. '
+      + 'La tasa pactada es la TEA; la tasa de cada período es (1 + TEA)^(días/360) - 1. '
       + 'La TEA no incluye la contribución SOLCA (0,5 % retenido al desembolso, anualizado si el plazo es menor a un año) ni los seguros; el costo efectivo anual sí los incluye. '
+      + (simulation.sistemaAmortizacion === 'ALEMAN'
+        ? 'La última cuota ajusta los centavos de redondeo del abono a capital. '
+        : '')
       + 'Puedes pagar por anticipado sin penalidad. Proyecto académico de la materia Ingeniería Económica.',
     y,
     { background: '#fffbeb', text: '#92400e' }
@@ -354,7 +375,7 @@ function generateSavingsPlanPDF({ institution, simulation, application }, output
   const doc = createDocument(outputStream);
   const color = institution?.colorSecundario || '#0369a1';
 
-  drawHeader(doc, institution, 'Ahorro programado', color);
+  drawHeader(doc, institution, color);
   const reference = application ? `Solicitud ${application.codigo}` : `Simulación ${String(simulation.id).slice(0, 8)}`;
   let y = drawTitle(doc, application ? 'SOLICITUD DE AHORRO PROGRAMADO' : 'SIMULACIÓN DE AHORRO PROGRAMADO', reference, 115);
 
@@ -425,7 +446,7 @@ function generateInvestmentSimulationPDF({ institution, simulation, application 
   const doc = createDocument(outputStream);
   const color = institution?.colorSecundario || '#0369a1';
 
-  drawHeader(doc, institution, 'Depósito a plazo fijo', color);
+  drawHeader(doc, institution, color);
   const reference = application ? `Solicitud ${application.codigo}` : `Simulación ${String(simulation.id).slice(0, 8)}`;
   let y = drawTitle(doc, application ? 'SOLICITUD DE INVERSIÓN A PLAZO FIJO' : 'SIMULACIÓN DE INVERSIÓN A PLAZO FIJO', reference, 115);
 
