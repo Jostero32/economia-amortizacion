@@ -146,7 +146,11 @@ export const identityService = {
   getMine: () => api.get('/identity/me'),
   start: (consentimientoVersion) => api.post('/identity', { aceptaConsentimiento: true, consentimientoVersion }),
   uploadFront: (id, file) => api.post(`/identity/${id}/anverso`, imageForm({ foto: file }), multipart),
-  uploadBack: (id, file) => api.post(`/identity/${id}/reverso`, imageForm({ foto: file }), multipart),
+  uploadBack: (id, file, { modeloAnterior = false } = {}) => {
+    const body = imageForm({ foto: file });
+    if (modeloAnterior) body.append('modeloAnterior', 'true');
+    return api.post(`/identity/${id}/reverso`, body, multipart);
+  },
   uploadSelfie: (id, selfie, vida = []) => api.post(`/identity/${id}/selfie`, imageForm({ selfie, vida }), multipart),
   // Imagen con la cookie de sesión (titular o asesor)
   getFileBlob: (id, tipo) =>

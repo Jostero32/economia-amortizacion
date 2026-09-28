@@ -5,59 +5,104 @@
  * - GET /api/admin/identity-verifications, GET /:id, PATCH /:id/decision
  * - Exigencia de identidad al crear y aprobar solicitudes
  *
- * El reconocimiento facial se simula (descriptores con distancia conocida); el resto es real.
+ * El reconocimiento facial y la lectura de la MRZ se simulan; reglas, datos y archivos son reales.
  */
 jest.mock('../../src/services/identity/faceService', () => {
   const actual = jest.requireActual('../../src/services/identity/faceService');
   return { ...actual, warmup: jest.fn(), detectMainFace: jest.fn() };
+});
+jest.mock('../../src/services/identity/mrzService', () => {
+  const actual = jest.requireActual('../../src/services/identity/mrzService');
+  return { ...actual, readMrz: jest.fn() };
 });
 
 const request = require('supertest');
 const sharp = require('sharp');
 const app = require('../../src/app');
 const faceService = require('../../src/services/identity/faceService');
+const mrzService = require('../../src/services/identity/mrzService');
 const { CONSENT_VERSION } = require('../../src/config/identity');
-const { PENDING_DATA_MOTIVE } = require('../../src/services/identity/decisionEngine');
-const { CreditType, Document, User } = require('../../src/models');
+const { CreditType, Document, IdentityVerification, User } = require('../../src/models');
 const { initTestDatabase, seedCompleteData, generateTestToken } = require('../helpers/dbSetup');
 
 // Rostro simulado: la distancia entre face(a) y face(b) es |a − b|
 const face = (value) => ({ descriptor: [value, ...new Array(127).fill(0)], score: 0.9, faces: 1, box: {}, landmarks: [] });
 
 let photo;
-let cedulaSeq = 0;
-const CEDULAS = ['1712345600', '1712345618', '1712345626', '1712345634', '1712345642', '1712345659'];
+let seq = 0;
 
-async function newClient() {
-  const cedula = CEDULAS[cedulaSeq];
-  cedulaSeq += 1;
+/** Cédula válida y única para la prueba n (provincia 17, dígito verificador módulo 10). */
+function cedulaFor(n) {
+  const base = `171${String(n).padStart(6, '0')}`;
+  const sum = [2, 1, 2, 1, 2, 1, 2, 1, 2].reduce((total, coefficient, i) => {
+    const product = Number(base[i]) * coefficient;
+    return total + (product > 9 ? product - 9 : product);
+  }, 0);
+  return `${base}${(10 - (sum % 10)) % 10}`;
+}
+
+async function newClient({ cedula } = {}) {
+  seq += 1;
   const user = await User.create({
-    nombre: `Cliente Identidad ${cedulaSeq}`,
-    email: `identidad${cedulaSeq}@test.local`,
+    nombre: `Cliente Identidad ${seq}`,
+    email: `identidad${seq}@test.local`,
     password: 'Cliente123!',
     rol: 'CLIENTE',
-    cedula,
+    cedula: cedula === undefined ? cedulaFor(seq) : cedula,
   });
   return { user, token: generateTestToken(user) };
 }
 
+/** Lectura de la MRZ coherente con el cliente (su cédula y su nombre), con cambios opcionales. */
+const mrzFor = (user, changes = {}) => ({
+  leida: true,
+  consenso: true,
+  intentos: 2,
+  datos: {
+    nui: user.cedula || cedulaFor(500000 + seq),
+    numeroDocumento: '123456789',
+    apellidos: 'IDENTIDAD',
+    nombres: 'CLIENTE',
+    fechaNacimiento: '1990-05-15',
+    fechaVencimiento: '2033-09-29',
+    sexo: 'F',
+    nacionalidad: 'ECU',
+    donante: true,
+    lineaNombres: 'IDENTIDAD<<CLIENTE<<<<<<<<<<<<',
+    ...changes,
+  },
+});
+
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 const start = (token, body = { aceptaConsentimiento: true, consentimientoVersion: CONSENT_VERSION }) => request(app)
   .post('/api/identity').set(auth(token)).send(body);
-const upload = (token, id, side) => request(app)
-  .post(`/api/identity/${id}/${side}`).set(auth(token)).attach('foto', photo, `${side}.jpg`);
+const upload = (token, id, side, fields = {}) => {
+  const req = request(app).post(`/api/identity/${id}/${side}`).set(auth(token));
+  Object.entries(fields).forEach(([name, value]) => req.field(name, value));
+  return req.attach('foto', photo, `${side}.jpg`);
+};
 const sendSelfie = (token, id) => request(app)
   .post(`/api/identity/${id}/selfie`).set(auth(token)).attach('selfie', photo, 'selfie.jpg');
 
-/** Recorre el flujo hasta la selfie con la distancia indicada entre la cédula y la selfie. */
-async function verify(token, distance) {
-  const started = await start(token);
+/**
+ * Recorre el flujo hasta la selfie.
+ * @param {Object} client - { user, token }
+ * @param {number} distance - Distancia entre el rostro de la cédula y el de la selfie
+ * @param {Object} [options] - mrz: cambios en los datos leídos · antigua: cédula del modelo anterior
+ */
+async function verify(client, distance, { mrz = {}, antigua = false } = {}) {
+  const started = await start(client.token);
   const { id } = started.body.data.verification;
   faceService.detectMainFace.mockResolvedValueOnce(face(0));
-  await upload(token, id, 'anverso');
-  await upload(token, id, 'reverso');
+  await upload(client.token, id, 'anverso');
+  if (antigua) {
+    await upload(client.token, id, 'reverso', { modeloAnterior: 'true' });
+  } else {
+    mrzService.readMrz.mockResolvedValueOnce(mrzFor(client.user, mrz));
+    await upload(client.token, id, 'reverso');
+  }
   faceService.detectMainFace.mockResolvedValueOnce(face(0)).mockResolvedValueOnce(face(distance));
-  const res = await sendSelfie(token, id);
+  const res = await sendSelfie(client.token, id);
   return { id, res };
 }
 
@@ -74,6 +119,7 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
 
   beforeEach(() => {
     faceService.detectMainFace.mockReset();
+    mrzService.readMrz.mockReset();
   });
 
   test('un cliente nuevo no está verificado ni puede solicitar', async () => {
@@ -110,50 +156,99 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
     expect((await sendSelfie(token, id)).status).toBe(400);
   });
 
-  test('el reverso borroso se acepta con una advertencia', async () => {
-    const { token } = await newClient();
+  test('el reverso ilegible pide repetir la foto; con la cédula del modelo anterior continúa', async () => {
+    const { user, token } = await newClient();
     const { id } = (await start(token)).body.data.verification;
-    const res = await upload(token, id, 'reverso');
-    expect(res.status).toBe(200);
-    expect(res.body.data.verification.capturas.reverso).toBe(true);
-    expect(res.body.data.advertencia).toMatch(/borrosa/);
+
+    mrzService.readMrz.mockResolvedValueOnce({ leida: false, intentos: 7 });
+    const unreadable = await upload(token, id, 'reverso');
+    expect(unreadable.status).toBe(422);
+    expect(unreadable.body.errors.mrz).toBe('ILEGIBLE');
+    // La lectura aprovecha la cédula registrada para aceptar una sola lectura coincidente
+    expect(mrzService.readMrz).toHaveBeenCalledWith(expect.any(Buffer), { expectedNui: user.cedula });
+
+    const old = await upload(token, id, 'reverso', { modeloAnterior: 'true' });
+    expect(old.status).toBe(200);
+    expect(old.body.data.verification).toMatchObject({ tipoCedula: 'ANTIGUA', capturas: { reverso: true } });
+    expect(mrzService.readMrz).toHaveBeenCalledTimes(1);
   });
 
-  test('con el rostro coincidente (fase 1) la verificación pasa al asesor', async () => {
-    const { token } = await newClient();
-    const { res } = await verify(token, 0.3);
+  test('con el rostro y los datos coincidentes, la identidad se aprueba automáticamente', async () => {
+    const client = await newClient();
+    const { res } = await verify(client, 0.3);
     expect(res.status).toBe(200);
-    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.resultado).toBe('APROBADA');
     const { verification } = res.body.data;
-    expect(verification.estado).toBe('EN_REVISION');
-    expect(verification.rostro.resultado).toBe('COINCIDE');
-    expect(verification.motivos).toEqual([PENDING_DATA_MOTIVE]);
-    expect(verification.controles.map((c) => c.codigo)).toEqual(['ROSTRO_CEDULA', 'ROSTRO_SELFIE', 'ROSTRO_COINCIDE']);
+    expect(verification).toMatchObject({ estado: 'APROBADA', aprobacionAutomatica: true, motivos: [], vigenteHasta: '2033-09-29' });
+    expect(verification.controles.every((c) => c.ok)).toBe(true);
+    expect(verification.datos).toMatchObject({ cedula: client.user.cedula, fechaNacimiento: '1990-05-15' });
 
-    // Ya no admite cambios, pero con la identidad en revisión el cliente puede solicitar
-    expect((await upload(token, verification.id, 'reverso')).status).toBe(400);
-    const me = await request(app).get('/api/identity/me').set(auth(token));
-    expect(me.body.data).toMatchObject({ verificada: false, puedeSolicitar: true });
+    const me = await request(app).get('/api/identity/me').set(auth(client.token));
+    expect(me.body.data).toMatchObject({ verificada: true, puedeSolicitar: true });
+  });
+
+  test('sin cédula registrada, la aprobación registra en la cuenta la cédula leída', async () => {
+    const client = await newClient({ cedula: null });
+    const { res } = await verify(client, 0.3, { mrz: { nui: cedulaFor(900001) } });
+    expect(res.body.data.resultado).toBe('APROBADA');
+    await client.user.reload();
+    expect(client.user.cedula).toBe(cedulaFor(900001));
+  });
+
+  test('con la cédula del modelo anterior, la verificación pasa al asesor', async () => {
+    const client = await newClient();
+    const { res } = await verify(client, 0.3, { antigua: true });
+    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.verification.motivos[0]).toMatch(/modelo anterior/);
+  });
+
+  test('una cédula distinta a la registrada pasa al asesor', async () => {
+    const client = await newClient();
+    const { res } = await verify(client, 0.3, { mrz: { nui: cedulaFor(900002) } });
+    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.verification.motivos.join(' ')).toMatch(/no coincide con el de tu cuenta/);
+  });
+
+  test('una cédula que ya es de otra cuenta pasa al asesor', async () => {
+    const owner = await newClient();
+    const other = await newClient({ cedula: null });
+    const { res } = await verify(other, 0.3, { mrz: { nui: owner.user.cedula } });
+    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.verification.motivos).toContain('Esta cédula ya está registrada en otra cuenta.');
+  });
+
+  test('un nombre que no coincide pasa al asesor', async () => {
+    const client = await newClient();
+    const { res } = await verify(client, 0.3, { mrz: { apellidos: 'OTRA PERSONA', nombres: 'LUIS' } });
+    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.verification.motivos[0]).toMatch(/nombre registrado no coincide/);
+  });
+
+  test('una cédula vencida se rechaza', async () => {
+    const client = await newClient();
+    const { res } = await verify(client, 0.3, { mrz: { fechaVencimiento: '2024-01-31' } });
+    expect(res.body.data.resultado).toBe('RECHAZADA');
+    expect(res.body.data.verification.motivos[0]).toMatch(/venció el 31\/01\/2024/);
   });
 
   test('con el rostro dudoso pasa al asesor con el motivo', async () => {
-    const { token } = await newClient();
-    const { res } = await verify(token, 0.55);
+    const client = await newClient();
+    const { res } = await verify(client, 0.55);
     expect(res.body.data.resultado).toBe('EN_REVISION');
     expect(res.body.data.verification.motivos[0]).toMatch(/no es concluyente/);
   });
 
   test('con el rostro distinto pide reintentar y, al tercer intento, pasa al asesor', async () => {
-    const { token } = await newClient();
-    const first = await verify(token, 0.9);
+    const client = await newClient();
+    const first = await verify(client, 0.9);
     expect(first.res.body.data.resultado).toBe('REINTENTAR');
     expect(first.res.body.data.verification).toMatchObject({ estado: 'EN_CURSO', intentos: 1, intentosRestantes: 2 });
 
-    const second = await verify(token, 0.9);
+    const second = await verify(client, 0.9);
     expect(second.id).toBe(first.id);
     expect(second.res.body.data.resultado).toBe('REINTENTAR');
 
-    const third = await verify(token, 0.9);
+    const third = await verify(client, 0.9);
     expect(third.res.body.data.resultado).toBe('EN_REVISION');
     expect(third.res.body.data.verification.motivos.join(' ')).toMatch(/Se agotaron los 3 intentos/);
   });
@@ -161,7 +256,7 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
   test('las imágenes solo las ven el titular y el personal', async () => {
     const owner = await newClient();
     const other = await newClient();
-    const { id } = await verify(owner.token, 0.3);
+    const { id } = await verify(owner, 0.3);
 
     const mine = await request(app).get(`/api/identity/${id}/archivos/anverso`).set(auth(owner.token));
     expect(mine.status).toBe(200);
@@ -176,25 +271,26 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
 
   describe('decisión del asesor', () => {
     test('la cola muestra las verificaciones en revisión y solo el personal la ve', async () => {
-      const { token } = await newClient();
-      const { id } = await verify(token, 0.3);
+      const client = await newClient();
+      const { id } = await verify(client, 0.55);
 
       const res = await request(app).get('/api/admin/identity-verifications?estado=EN_REVISION').set(auth(advisorToken));
       expect(res.status).toBe(200);
       expect(res.body.data.verifications.map((v) => v.id)).toContain(id);
       expect(res.body.data.counts.EN_REVISION).toBeGreaterThan(0);
-      expect((await request(app).get('/api/admin/identity-verifications').set(auth(token))).status).toBe(403);
+      expect((await request(app).get('/api/admin/identity-verifications').set(auth(client.token))).status).toBe(403);
 
       const detail = await request(app).get(`/api/admin/identity-verifications/${id}`).set(auth(advisorToken));
       expect(detail.status).toBe(200);
-      expect(detail.body.data.verification.rostroDistancia).toBeCloseTo(0.3, 4);
-      expect(detail.body.data.verification.user.cedula).toBeDefined();
+      expect(detail.body.data.verification.rostroDistancia).toBeCloseTo(0.55, 4);
+      expect(detail.body.data.verification.datosMrz.nui).toBe(client.user.cedula);
       expect(detail.body.data.verification.consentimiento.version).toBe(CONSENT_VERSION);
+      expect(detail.body.data.umbrales).toEqual({ rostroCoincide: 0.5, rostroDudoso: 0.6 });
     });
 
     test('rechazar exige el motivo; tras el rechazo el cliente puede empezar de nuevo', async () => {
-      const { token } = await newClient();
-      const { id } = await verify(token, 0.3);
+      const client = await newClient();
+      const { id } = await verify(client, 0.55);
       const decide = (body) => request(app).patch(`/api/admin/identity-verifications/${id}/decision`).set(auth(advisorToken)).send(body);
 
       expect((await decide({ estado: 'RECHAZADA' })).status).toBe(400);
@@ -202,27 +298,38 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
       expect(rejected.status).toBe(200);
       expect((await decide({ estado: 'APROBADA' })).status).toBe(400);
 
-      const me = await request(app).get('/api/identity/me').set(auth(token));
+      const me = await request(app).get('/api/identity/me').set(auth(client.token));
       expect(me.body.data.verification.estado).toBe('RECHAZADA');
       expect(me.body.data.verification.comentarioRevision).toBe('La selfie no corresponde a la cédula.');
-      const restarted = await start(token);
+      const restarted = await start(client.token);
       expect(restarted.status).toBe(201);
       expect(restarted.body.data.verification.id).not.toBe(id);
     });
 
-    test('aprobar deja la identidad verificada y no permite iniciar otra', async () => {
-      const { token } = await newClient();
-      const { id } = await verify(token, 0.3);
+    test('aprobar deja la identidad verificada con la vigencia de la cédula y no permite iniciar otra', async () => {
+      const client = await newClient({ cedula: null });
+      const { id } = await verify(client, 0.55, { mrz: { nui: cedulaFor(900003) } });
       const res = await request(app)
         .patch(`/api/admin/identity-verifications/${id}/decision`)
         .set(auth(advisorToken))
         .send({ estado: 'APROBADA' });
       expect(res.status).toBe(200);
-      expect(res.body.data.verification).toMatchObject({ estado: 'APROBADA', aprobacionAutomatica: false });
+      expect(res.body.data.verification).toMatchObject({ estado: 'APROBADA', aprobacionAutomatica: false, vigenteHasta: '2033-09-29' });
+      await client.user.reload();
+      expect(client.user.cedula).toBe(cedulaFor(900003));
 
-      const me = await request(app).get('/api/identity/me').set(auth(token));
+      const me = await request(app).get('/api/identity/me').set(auth(client.token));
       expect(me.body.data).toMatchObject({ verificada: true, puedeSolicitar: true });
-      expect((await start(token)).status).toBe(409);
+      expect((await start(client.token)).status).toBe(409);
+    });
+
+    test('una verificación aprobada con la cédula vencida deja de contar', async () => {
+      const client = await newClient();
+      const { id } = await verify(client, 0.3);
+      await IdentityVerification.update({ vigenteHasta: '2020-01-01' }, { where: { id } });
+      const me = await request(app).get('/api/identity/me').set(auth(client.token));
+      expect(me.body.data).toMatchObject({ verificada: false, puedeSolicitar: false });
+      expect((await start(client.token)).status).toBe(201);
     });
   });
 
@@ -240,7 +347,7 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
       ciudad: 'Quito',
       telefono: '0998877665',
       email: 'carlos@cliente.local',
-      fechaNacimiento: '1990-05-15',
+      fechaNacimiento: '1985-02-20',
       actividadEconomica: 'Empleado privado',
       ingresosMensuales: 1500,
       egresosMensuales: 600,
@@ -258,11 +365,19 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
       expect(res.body.errors.identidad).toBe('IDENTIDAD_NO_VERIFICADA');
     });
 
-    test('con la identidad en revisión se solicita, pero se aprueba solo con la identidad verificada', async () => {
-      const { token } = await newClient();
-      const { id } = await verify(token, 0.3);
+    test('con la identidad verificada, la solicitud usa la cédula y la fecha de nacimiento verificadas', async () => {
+      const client = await newClient();
+      await verify(client, 0.3);
+      const res = await request(app).post('/api/credit-applications').set(auth(client.token)).send(creditPayload());
+      expect(res.status).toBe(201);
+      expect(res.body.data.application).toMatchObject({ cedula: client.user.cedula, fechaNacimiento: '1990-05-15' });
+    });
 
-      const created = await request(app).post('/api/credit-applications').set(auth(token)).send(creditPayload());
+    test('con la identidad en revisión se solicita, pero se aprueba solo con la identidad verificada', async () => {
+      const client = await newClient();
+      const { id } = await verify(client, 0.55);
+
+      const created = await request(app).post('/api/credit-applications').set(auth(client.token)).send(creditPayload());
       expect(created.status).toBe(201);
       const application = created.body.data.application;
 

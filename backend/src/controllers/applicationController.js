@@ -38,12 +38,18 @@ const REQUIRED_DOCUMENT_TYPES = [
 
 const IDENTITY_REQUIRED_MESSAGE = 'Verifica tu identidad antes de enviar una solicitud.';
 
-/** El cliente solo puede solicitar con la identidad verificada o en revisión. */
+/**
+ * El cliente solo puede solicitar con la identidad verificada o en revisión.
+ * @returns {Promise<null | {verificados: object|null}>} verificados: datos de la cédula verificada
+ *   (se imponen en la solicitud: no se toman del formulario)
+ */
 async function requireIdentity(req, res) {
-  const { puedeSolicitar } = await identityStatus(req.user.id);
-  if (puedeSolicitar) return true;
-  errorResponse(res, IDENTITY_REQUIRED_MESSAGE, 403, { identidad: 'IDENTIDAD_NO_VERIFICADA' });
-  return false;
+  const { verification, verificada, puedeSolicitar } = await identityStatus(req.user.id);
+  if (!puedeSolicitar) {
+    errorResponse(res, IDENTITY_REQUIRED_MESSAGE, 403, { identidad: 'IDENTIDAD_NO_VERIFICADA' });
+    return null;
+  }
+  return { verificados: verificada ? verification.datosMrz : null };
 }
 
 /** Estado de identidad del titular, para el detalle de una solicitud. */
@@ -121,7 +127,8 @@ function simulationAgeInDays(simulation) {
  */
 async function createCreditApplication(req, res, next) {
   try {
-    if (!(await requireIdentity(req, res))) return undefined;
+    const identity = await requireIdentity(req, res);
+    if (!identity) return undefined;
     const userId = req.user.id;
     const {
       simulationId,
@@ -134,8 +141,6 @@ async function createCreditApplication(req, res, next) {
       polizaDesgravamenPropia,
       nombres,
       apellidos,
-      cedula,
-      fechaNacimiento,
       estadoCivil,
       direccion,
       ciudad,
@@ -145,6 +150,9 @@ async function createCreditApplication(req, res, next) {
       ingresosMensuales,
       egresosMensuales,
     } = req.body;
+    // Con la identidad verificada, la cédula y la fecha de nacimiento son las de la cédula leída
+    const cedula = identity.verificados?.nui || req.body.cedula;
+    const fechaNacimiento = identity.verificados?.fechaNacimiento || req.body.fechaNacimiento;
 
     let simulation;
     let rows;
@@ -351,7 +359,8 @@ async function getCreditApplicationById(req, res, next) {
  */
 async function createInvestmentApplication(req, res, next) {
   try {
-    if (!(await requireIdentity(req, res))) return undefined;
+    const identity = await requireIdentity(req, res);
+    if (!identity) return undefined;
     const userId = req.user.id;
     const {
       simulationId,
@@ -360,7 +369,6 @@ async function createInvestmentApplication(req, res, next) {
       plazoDias,
       nombres,
       apellidos,
-      cedula,
       telefono,
       email,
       actividadEconomica,
@@ -368,6 +376,8 @@ async function createInvestmentApplication(req, res, next) {
       origenFondos,
       finalidadInversion,
     } = req.body;
+    // Con la identidad verificada, la cédula es la de la cédula leída
+    const cedula = identity.verificados?.nui || req.body.cedula;
 
     const product = await InvestmentProduct.findByPk(investmentProductId, {
       include: [{ model: InvestmentRate, as: 'rates', where: { activo: true }, required: false }],

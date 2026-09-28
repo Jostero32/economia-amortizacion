@@ -14,6 +14,9 @@ const { detectMainFace, compareFaces } = require('../services/identity/faceServi
 const { saveImage, readImage, resolveImage } = require('../services/identity/identityStorage');
 const { decide, storedState } = require('../services/identity/decisionEngine');
 const { identityStatus } = require('../services/identity/identityStatus');
+const { readMrz } = require('../services/identity/mrzService');
+const { dataControls } = require('../services/identity/dataChecks');
+const { todayISO } = require('../utils/dates');
 
 const STATES = ['EN_CURSO', 'EN_REVISION', 'APROBADA', 'RECHAZADA'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,9 +44,42 @@ function clientView(verification) {
     fechaVerificacion: v.fechaVerificacion,
     vigenteHasta: v.vigenteHasta,
     comentarioRevision: v.revisadoPor ? v.comentarioRevision : null,
+    // Datos de la cédula verificada: prellenan (y bloquean) los formularios de solicitud
+    datos: v.estado === 'APROBADA' && v.datosMrz
+      ? {
+        cedula: v.datosMrz.nui,
+        apellidos: v.datosMrz.apellidos,
+        nombres: v.datosMrz.nombres,
+        fechaNacimiento: v.datosMrz.fechaNacimiento,
+        fechaVencimiento: v.datosMrz.fechaVencimiento,
+      }
+      : null,
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   };
+}
+
+/** El NUI ya pertenece a otra cuenta (registrado o verificado por otro usuario). */
+async function cedulaEnOtraCuenta(nui, userId) {
+  if (!nui) return false;
+  const [registered, verified] = await Promise.all([
+    User.findOne({ where: { cedula: nui, id: { [Op.ne]: userId } }, attributes: ['id'] }),
+    IdentityVerification.findOne({
+      where: { userId: { [Op.ne]: userId }, estado: 'APROBADA', datosMrz: { nui } },
+      attributes: ['id'],
+    }),
+  ]);
+  return Boolean(registered || verified);
+}
+
+/** Al aprobar: si la cuenta no tenía cédula, se registra la verificada (si nadie más la tiene). */
+async function adoptCedula(verification) {
+  const nui = verification.datosMrz?.nui;
+  if (!nui) return;
+  const user = await User.findByPk(verification.userId, { attributes: ['id', 'cedula'] });
+  if (user && !user.cedula && !(await cedulaEnOtraCuenta(nui, user.id))) {
+    await User.update({ cedula: nui }, { where: { id: user.id } });
+  }
 }
 
 function adminView(verification) {
@@ -175,34 +211,60 @@ async function uploadFront(req, res, next) {
   }
 }
 
-/** Reverso: se guarda y se informa si la franja inferior se ve nítida. */
+/**
+ * Reverso: se leen los datos de la MRZ y se responde de inmediato. Si no se pueden leer, se pide
+ * repetir la foto; con una cédula del modelo anterior (sin MRZ) el cliente lo indica y sigue.
+ */
 async function uploadBack(req, res, next) {
   try {
     const verification = await findOwnInProgress(req, res);
     if (!verification) return undefined;
     if (!req.file) return errorResponse(res, 'Adjunta la foto del reverso de tu cédula.', 400);
+    const modeloAnterior = String(req.body.modeloAnterior) === 'true';
 
     const { buffer } = await normalizeImage(req.file.buffer);
     const card = await cropCard(buffer);
     const nitidez = Math.round(await sharpness(card.buffer));
 
+    let datosMrz = null;
+    let mrz = null;
+    if (!modeloAnterior) {
+      mrz = await readMrz(card.buffer, { expectedNui: req.user.cedula || null });
+      if (!mrz.leida) {
+        return errorResponse(
+          res,
+          nitidez < MIN_BACK_SHARPNESS
+            ? 'La foto salió borrosa y no pudimos leer las 3 líneas de la parte inferior. Repítela con más luz y la cédula quieta.'
+            : 'No pudimos leer las 3 líneas de la parte inferior de tu cédula. Repite la foto; si tu cédula es del modelo anterior (sin esas líneas), indícalo para continuar.',
+          422,
+          { mrz: 'ILEGIBLE' }
+        );
+      }
+      datosMrz = { ...mrz.datos, consenso: mrz.consenso };
+    }
+
     const reversoRuta = await saveImage(verification.id, 'reverso', card.buffer);
-    await verification.update({ reversoRuta });
+    await verification.update({ reversoRuta, datosMrz, tipoCedula: modeloAnterior ? 'ANTIGUA' : 'ELECTRONICA' });
     await logAudit({
       req,
       accion: 'CAPTURA_IDENTIDAD',
       entidad: 'IdentityVerification',
       entidadId: verification.id,
-      detalles: { tipo: 'REVERSO', recortada: card.cropped, nitidez },
+      detalles: {
+        tipo: 'REVERSO',
+        recortada: card.cropped,
+        nitidez,
+        modeloAnterior,
+        mrz: mrz ? { consenso: mrz.consenso, intentos: mrz.intentos } : null,
+      },
     });
 
     return successResponse(res, {
       verification: clientView(verification),
       nitidez,
-      advertencia: nitidez < MIN_BACK_SHARPNESS
-        ? 'La franja inferior se ve borrosa. Si puedes, repite la foto con más luz y la cédula quieta.'
-        : null,
-    }, 200, 'Recibimos el reverso de tu cédula.');
+      cedulaLeida: datosMrz ? `••${datosMrz.nui.slice(-2)}` : null,
+      advertencia: null,
+    }, 200, datosMrz ? 'Leímos los datos de tu cédula.' : 'Recibimos el reverso de tu cédula.');
   } catch (error) {
     next(error);
   }
@@ -261,7 +323,19 @@ async function uploadSelfie(req, res, next) {
     const anverso = await readImage(verification.anversoRuta);
     const cedulaFace = anverso ? await detectMainFace(anverso) : null;
     const selfieFace = await detectMainFace(selfie);
-    const { controles, comparison } = faceControls(cedulaFace, selfieFace);
+    const { controles: rostro, comparison } = faceControls(cedulaFace, selfieFace);
+    const datos = verification.datosMrz;
+    const controles = [
+      ...rostro,
+      ...dataControls({
+        tipoCedula: verification.tipoCedula,
+        datos,
+        cedulaRegistrada: req.user.cedula || null,
+        nombreRegistrado: req.user.nombre,
+        cedulaEnOtraCuenta: await cedulaEnOtraCuenta(datos?.nui, req.user.id),
+        today: todayISO(),
+      }),
+    ];
 
     const intentos = verification.intentos + 1;
     const decision = decide({ controles, intentos, maxIntentos: MAX_ATTEMPTS });
@@ -278,7 +352,9 @@ async function uploadSelfie(req, res, next) {
       estado: storedState(decision.resultado),
       aprobacionAutomatica: decision.aprobacionAutomatica,
       fechaVerificacion: aprobada ? new Date() : null,
+      vigenteHasta: aprobada ? datos?.fechaVencimiento || null : null,
     });
+    if (aprobada) await adoptCedula(verification);
 
     await logAudit({
       req,
@@ -422,6 +498,8 @@ async function decideVerification(req, res, next) {
       fechaVerificacion: aprobada ? new Date() : null,
       vigenteHasta: aprobada ? verification.datosMrz?.fechaVencimiento || null : verification.vigenteHasta,
     });
+
+    if (aprobada) await adoptCedula(verification);
 
     await logAudit({
       req,

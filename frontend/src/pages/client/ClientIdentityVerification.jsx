@@ -79,6 +79,9 @@ export default function ClientIdentityVerification() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState(null);
   const [warning, setWarning] = useState(null);
+  const [backRead, setBackRead] = useState(null); // "••32": cédula leída en el reverso
+  const [unreadableBack, setUnreadableBack] = useState(null); // foto del reverso sin MRZ legible
+  const [sendingOld, setSendingOld] = useState(false);
   const [result, setResult] = useState(null);
 
   if (loading) return <LoadingState message="Consultando tu verificación de identidad..." />;
@@ -111,10 +114,31 @@ export default function ClientIdentityVerification() {
     await identityService.uploadFront(verificationId, file);
     setStep('reverso');
   };
-  const onBack = async (file) => {
-    const response = await identityService.uploadBack(verificationId, file);
+  const afterBack = (response) => {
     setWarning(response.data.advertencia);
+    setBackRead(response.data.cedulaLeida);
+    setUnreadableBack(null);
     setStep('selfie');
+  };
+  const onBack = async (file) => {
+    try {
+      afterBack(await identityService.uploadBack(verificationId, file));
+    } catch (err) {
+      // Sin MRZ legible: repetir la foto o continuar como cédula del modelo anterior
+      if (err.errors?.mrz) setUnreadableBack(file);
+      throw err;
+    }
+  };
+  const continueWithOldCard = async () => {
+    setSendingOld(true);
+    setError(null);
+    try {
+      afterBack(await identityService.uploadBack(verificationId, unreadableBack, { modeloAnterior: true }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSendingOld(false);
+    }
   };
   const onSelfie = async (file) => {
     const response = await identityService.uploadSelfie(verificationId, file);
@@ -271,7 +295,7 @@ export default function ClientIdentityVerification() {
                   <span className="self-center text-[12px] text-gray-500 mr-auto">
                     Te quedan {verification.intentosRestantes} intento(s).
                   </span>
-                  <Button variant="fintech" iconName="replay" onClick={() => { setResult(null); setWarning(null); setStep('anverso'); }}>
+                  <Button variant="fintech" iconName="replay" onClick={() => { setResult(null); setWarning(null); setBackRead(null); setStep('anverso'); }}>
                     Intentar de nuevo
                   </Button>
                 </>
@@ -295,9 +319,23 @@ export default function ClientIdentityVerification() {
       {header}
       <Stepper step={step} />
       <Card title={stepInfo.label} iconName={stepInfo.icon}>
+        {step === 'selfie' && backRead && (
+          <Alert type="success" className="mb-3">Leímos los datos de tu cédula terminada en {backRead}.</Alert>
+        )}
         {step === 'selfie' && warning && <Alert type="warning" className="mb-3">{warning}</Alert>}
         {step === 'anverso' && <CardCapture key="anverso" lado="anverso" onConfirm={onFront} />}
         {step === 'reverso' && <CardCapture key="reverso" lado="reverso" onConfirm={onBack} />}
+        {step === 'reverso' && unreadableBack && (
+          <div className="mt-3 p-3 rounded-lg border border-amber-200 bg-amber-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-[13px] text-amber-950">
+              ¿Tu cédula es del modelo anterior (sin las 3 líneas de letras y números)? Puedes continuar y un asesor verificará tus datos.
+            </span>
+            <Button variant="outline" size="sm" iconName="arrow_forward" onClick={continueWithOldCard} loading={sendingOld} loadingText="Enviando...">
+              Mi cédula es del modelo anterior
+            </Button>
+          </div>
+        )}
+        {step === 'reverso' && error && <Alert type="error" className="mt-3">{error}</Alert>}
         {step === 'selfie' && <SelfieCapture onConfirm={onSelfie} />}
       </Card>
       <div className="text-center">

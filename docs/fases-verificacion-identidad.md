@@ -111,7 +111,7 @@ funcione para los clientes reales, a costa de aceptar más riesgo con personas m
 | Rostro: no coincide (reintentar) | distancia > 0,60 | Mediana de impostores: 0,75 |
 | MRZ aceptada | Dos lecturas coincidentes, o una sola cuyo NUI es exactamente la cédula registrada | Una lectura errónea no puede producir justo la cédula del cliente |
 | Nitidez del reverso (captura) | ≥ 40 | Con ≥ 40 se leyó bien el 100 % de la muestra |
-| Nombre | Al menos 2 palabras del nombre registrado presentes en la MRZ; se tolera 1 letra distinta por palabra, un nombre omitido o cortado | La MRZ quita tildes, cambia Ñ por N y corta a 30 caracteres |
+| Nombre | Todas las palabras registradas (sin partículas; mínimo 2 salvo nombre de una palabra); tolera 1 letra distinta, 2 en palabras de 7 o más letras, y nombres cortados | La MRZ quita tildes, cambia Ñ por N y corta a 30 caracteres |
 | Intentos | 3 | Luego pasa al asesor |
 
 Riesgo aceptado: entre rostros de personas muy parecidas (misma edad, maquillaje y luz), el 1,3 % de
@@ -215,6 +215,7 @@ todo coincide.
    - solo los caracteres `A–Z 0–9 <`;
    - intentos con distintos recortes, escalas y preprocesos;
    - lectura aceptada según la tabla de umbrales;
+   - `mrz` fijo en **4.2.1**, compatible con CommonJS, Jest y Node 20; una lectura basta si el NUI coincide exactamente con la cédula registrada;
    - las fechas AAMMDD se convierten a fecha completa (nacimiento en el siglo que corresponda,
      vencimiento en el 2000).
 2. **Reverso:** al subirlo se lee la MRZ y se responde de inmediato:
@@ -247,8 +248,8 @@ todo coincide.
 
 1. **Reverso:** muestra de inmediato si la franja se leyó ("Leímos tu cédula terminada en ••52") o
    pide repetir la foto. Ofrece "Mi cédula es del modelo anterior".
-2. **Formularios de solicitud:** con la identidad verificada, se llenan con los datos de la cédula
-   (nombres, apellidos, cédula y fecha de nacimiento) y quedan bloqueados.
+2. **Formularios de solicitud:** con la identidad verificada, la cédula y la fecha de nacimiento se
+   llenan con los datos leídos y quedan bloqueadas; el servidor impone esos mismos datos.
 3. **Asesor:** tabla "dato leído vs. registrado" con ✓/✗ y el tipo de cédula.
 
 ### Pruebas y criterio de aceptación
@@ -257,7 +258,7 @@ todo coincide.
   - interpretación de la MRZ con cadenas sintéticas: válidas, con dígito alterado y con fechas límite;
   - comparación de nombres: tildes, Ñ, orden, nombres omitidos o cortados, personas distintas;
   - reglas de decisión: una prueba por cada fila de la tabla.
-- **Una prueba del lector de MRZ real** sobre una tarjeta sintética generada en la prueba, sin datos
+- **Una prueba del lector de MRZ real** sobre una tarjeta sintética conservada en las fixtures, sin datos
   personales.
 - **Integración:** aprobación automática, rechazo por vencimiento y paso al asesor por cada motivo.
 - **Punta a punta:** con las cédulas reales de la calibración (fuera del repositorio), una
@@ -308,10 +309,17 @@ todo coincide.
 
 ## Estado
 
+Validación de la fase 2 (28/09/2026): **296 pruebas en 23 suites** y build del frontend correctos.
+En Chrome, P2 y P3 quedaron aprobadas automáticamente (distancias 0,4419 y 0,4718); P3 usó el
+botón de captura de selfie porque la cámara simulada no activó la captura automática. La cédula
+antigua devolvió 422, permitió continuar como modelo anterior y terminó en revisión. Se revisaron
+las pantallas del cliente y del asesor. Las imágenes y la base de estas pruebas son temporales y
+externas al repositorio.
+
 | Fase | Estado | Commit |
 | --- | --- | --- |
 | 0 | Hecha | `751e914` |
-| 1 | En curso | |
-| 2 | Pendiente | |
+| 1 | Hecha | `cdbbb3e` |
+| 2 | Hecha | Commit «Leer la MRZ y aprobar la identidad automáticamente (fase 2)» |
 | 3 | Pendiente | |
 | 4 | Pendiente | |

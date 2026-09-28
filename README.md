@@ -158,6 +158,9 @@ con $k$ = meses. El sistema lo calcula mes a mes, redondeando a centavos, y mues
   3. **Selfie** con un óvalo guía.
 - El **servidor** decide: normaliza las fotos (orientación EXIF, recorte de la tarjeta), compara el rostro de la cédula con la selfie (`@vladmandic/face-api` con TensorFlow WASM) y aplica las reglas (`backend/src/services/identity/decisionEngine.js`). Lo que calcula el navegador solo guía la captura.
 - Resultado según la distancia *d* entre descriptores faciales: **Coincide** si *d* ≤ 0,50; **Dudoso** si *d* ≤ 0,60 (revisión del asesor); **No coincide** si *d* > 0,60 (reintentar, hasta 3 intentos). Umbrales en `backend/src/config/identity.js`, calibrados con cédulas reales ([docs/verificacion-identidad.md](docs/verificacion-identidad.md)).
+- El reverso se lee con Tesseract y el modelo MRZ: se exigen dos lecturas coincidentes o una cuyo NUI sea exactamente la cédula registrada. Si rostro, número de cédula, nombre, mayoría de edad, vigencia y unicidad coinciden, la identidad se aprueba automáticamente. Solo una cédula vencida o una persona menor de edad producen rechazo automático.
+- La cédula del modelo anterior, sin MRZ, pasa al asesor. Si la franja no se lee, se ofrece repetir la foto o continuar como modelo anterior.
+- Con la identidad aprobada, las solicitudes toman la cédula y la fecha de nacimiento verificadas; el formulario las muestra bloqueadas y el servidor las aplica aunque se envíen otros valores.
 - Los casos que no se resuelven solos pasan a la cola del asesor (**Verificaciones**), con las capturas, los controles y los motivos; aprobar o rechazar queda auditado.
 - Plan completo por fases: [docs/fases-verificacion-identidad.md](docs/fases-verificacion-identidad.md). La calibración se repite con [tools/calibracion-identidad](tools/calibracion-identidad/README.md).
 
@@ -192,6 +195,8 @@ DB_USER=postgres DB_PASSWORD=postgres npm test
 Las variables definidas en la línea de comandos tienen prioridad sobre las de `backend/.env`.
 
 Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abono extraordinario, fechas de fin de mes, redondeo, conversión nominal/TEA, cargos (SOLCA anualizada, desgravamen, póliza propia, opcionales), costo efectivo, inversiones (retención, tramos, pago mensual, ahorro programado), cédula ecuatoriana, validaciones con mensajes por campo, reglas de la solicitud, flujo de estados, permisos por rol, protección de documentos y generación de PDF.
+
+Identidad: consentimiento, capturas privadas, comparación facial real con WASM, lectura OCR de una MRZ sintética, comparación de nombres y datos, aprobación automática, revisión del asesor e integración con solicitudes. Las fotos de calibración reales se mantienen fuera del repositorio.
 
 ---
 

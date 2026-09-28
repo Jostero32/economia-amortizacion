@@ -174,6 +174,17 @@ export default function ClientApplications() {
     declaraLicitudFondos: false,
   });
 
+  // Con la identidad verificada, la cédula y la fecha de nacimiento salen de la cédula leída
+  const verifiedData = identity.status?.verificada ? identity.status.verification?.datos : null;
+  useEffect(() => {
+    if (!verifiedData) return;
+    setFormData((previous) => ({
+      ...previous,
+      cedula: verifiedData.cedula || previous.cedula,
+      fechaNacimiento: verifiedData.fechaNacimiento || previous.fechaNacimiento,
+    }));
+  }, [verifiedData]);
+
   useEffect(() => {
     Promise.all([clientService.getMyCreditApplications(), clientService.getMyInvestmentApplications()])
       .then(([creditResponse, investmentResponse]) => {
@@ -307,7 +318,18 @@ export default function ClientApplications() {
     <>
       <FormInput label="Nombres" name="nombres" value={formData.nombres} onChange={handleInputChange} error={fieldError(errors, 'nombres')} required />
       <FormInput label="Apellidos" name="apellidos" value={formData.apellidos} onChange={handleInputChange} error={fieldError(errors, 'apellidos')} required />
-      <FormInput label="Cédula" name="cedula" inputMode="numeric" maxLength={10} value={formData.cedula} onChange={handleInputChange} error={fieldError(errors, 'cedula')} required />
+      <FormInput
+        label="Cédula"
+        name="cedula"
+        inputMode="numeric"
+        maxLength={10}
+        value={formData.cedula}
+        onChange={handleInputChange}
+        error={fieldError(errors, 'cedula')}
+        disabled={Boolean(verifiedData?.cedula)}
+        hint={verifiedData?.cedula ? 'Dato de tu cédula verificada.' : undefined}
+        required
+      />
       <FormInput label="Teléfono celular" name="telefono" inputMode="tel" placeholder="09XXXXXXXX" value={formData.telefono} onChange={handleInputChange} error={fieldError(errors, 'telefono')} required />
       <FormInput type="email" label="Correo electrónico" name="email" value={formData.email} onChange={handleInputChange} error={fieldError(errors, 'email')} required />
       <FormInput
@@ -370,7 +392,18 @@ export default function ClientApplications() {
                 hint="Arriendo, alimentación, otras deudas."
                 required
               />
-              <FormInput type="date" label="Fecha de nacimiento" name="fechaNacimiento" max={todayISO()} value={formData.fechaNacimiento} onChange={handleInputChange} error={fieldError(creditErrors, 'fechaNacimiento')} required />
+              <FormInput
+                type="date"
+                label="Fecha de nacimiento"
+                name="fechaNacimiento"
+                max={todayISO()}
+                value={formData.fechaNacimiento}
+                onChange={handleInputChange}
+                error={fieldError(creditErrors, 'fechaNacimiento')}
+                disabled={Boolean(verifiedData?.fechaNacimiento)}
+                hint={verifiedData?.fechaNacimiento ? 'Dato de tu cédula verificada.' : undefined}
+                required
+              />
               <FormInput
                 type="select"
                 label="Estado civil"

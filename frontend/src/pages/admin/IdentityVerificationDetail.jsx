@@ -5,10 +5,11 @@ import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import Alert from '../../components/Alert';
+import Table from '../../components/Table';
 import { LoadingState } from '../../components/Spinner';
 import AuthImage from '../../components/identity/AuthImage';
 import IdentityBadge from '../../components/identity/IdentityBadge';
-import { formatDateTime } from '../../utils/format';
+import { formatDate, formatDateTime } from '../../utils/format';
 
 const FACE = {
   COINCIDE: { label: 'Coincide', bar: 'bg-emerald-500', text: 'text-emerald-800' },
@@ -75,6 +76,19 @@ export default function IdentityVerificationDetail() {
 
   const { verification: v, history, umbrales } = data;
   const face = v.rostro && FACE[v.rostro.resultado];
+  const control = (codigo) => v.controles?.find((c) => c.codigo === codigo);
+  const datos = v.datosMrz;
+  const rows = datos ? [
+    ['Tipo de cédula', datos.consenso ? 'Electrónica (MRZ leída con consenso)' : 'Electrónica (una lectura coincidente con la cédula registrada)', '—', 'MRZ_LEGIBLE'],
+    ['Cédula (NUI)', datos.nui, v.user?.cedula || 'no registrada', 'NUI_COINCIDE'],
+    ['Cédula en otra cuenta', '—', '—', 'CEDULA_UNICA'],
+    ['Nombre', `${datos.apellidos || ''} ${datos.nombres || ''}`.trim(), v.user?.nombre, 'NOMBRE_COINCIDE'],
+    ['Fecha de nacimiento', formatDate(datos.fechaNacimiento), '—', 'MAYOR_EDAD'],
+    ['Vencimiento', formatDate(datos.fechaVencimiento), '—', 'CEDULA_VIGENTE'],
+    ['N.º de documento', datos.numeroDocumento],
+    ['Sexo', { M: 'Masculino', F: 'Femenino' }[datos.sexo]],
+    ['Donante', datos.donante === true ? 'Sí' : datos.donante === false ? 'No' : '—'],
+  ] : [];
 
   return (
     <div className="space-y-space-md max-w-[1200px] mx-auto">
@@ -152,8 +166,29 @@ export default function IdentityVerificationDetail() {
       </div>
 
       <Card title="Datos de la cédula" iconName="badge">
-        {v.datosMrz ? (
-          <pre className="text-[12px] bg-gray-50 p-3 rounded-lg overflow-x-auto">{JSON.stringify(v.datosMrz, null, 2)}</pre>
+        {datos && v.tipoCedula !== 'ANTIGUA' ? (
+          <Table headers={['Dato', 'En la cédula', 'Registrado', 'Control']}>
+            {rows.map(([label, leido, registrado, codigo]) => {
+              const c = control(codigo);
+              return (
+                <tr key={label}>
+                  <th scope="row" className="px-4 py-3 font-medium">{label}</th>
+                  <td className="px-4 py-3">{leido || '—'}</td>
+                  <td className="px-4 py-3">{registrado || '—'}</td>
+                  <td className="px-4 py-3">
+                    {codigo ? (
+                      <span className="flex items-start gap-2">
+                        <span aria-hidden="true" className={`material-symbols-outlined text-[18px] ${c?.ok === true ? 'text-emerald-600' : c?.ok === false ? 'text-rose-600' : 'text-gray-400'}`}>
+                          {c?.ok === true ? 'check_circle' : c?.ok === false ? 'cancel' : 'help'}
+                        </span>
+                        <span>{c?.detalle || 'Pendiente de evaluar'}</span>
+                      </span>
+                    ) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
         ) : (
           <p className="text-[13px] text-gray-600">
             Los datos de la cédula no se leyeron automáticamente: compara la cédula de las fotos con los datos registrados del cliente
