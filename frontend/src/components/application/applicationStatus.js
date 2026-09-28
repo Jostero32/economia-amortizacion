@@ -30,12 +30,17 @@ export const STATUS_TRANSITIONS = {
 // El cliente necesita saber qué corregir en estos estados
 export const STATUSES_REQUIRING_NOTE = ['PENDIENTE_DOCUMENTOS', 'RECHAZADA'];
 
+// La cédula y la selfie ya no se piden por solicitud: se verifican una vez en /cliente/verificacion
 export const REQUIRED_DOCUMENTS = [
-  { tipo: 'CEDULA', label: 'Cédula de identidad', hint: 'Foto legible del anverso (JPG o PNG), donde se vea tu fotografía.' },
   { tipo: 'COMPROBANTE_DOMICILIO', label: 'Comprobante de domicilio', hint: 'Planilla de luz, agua o teléfono de los últimos 3 meses.' },
   { tipo: 'COMPROBANTE_INGRESOS', label: 'Comprobante de ingresos', hint: 'Rol de pagos, certificado laboral o declaración de impuestos.' },
-  { tipo: 'SELFIE', label: 'Selfie con tu cédula', hint: 'Tómala con la cámara sosteniendo tu cédula: se compara tu rostro con la foto del documento.' },
 ];
+
+// Documentos de solicitudes anteriores a la verificación de identidad
+export const LEGACY_DOCUMENT_LABELS = {
+  CEDULA: 'Cédula de identidad',
+  SELFIE: 'Selfie con la cédula',
+};
 
 export const POLICY_DOCUMENT = {
   tipo: 'POLIZA_DESGRAVAMEN',

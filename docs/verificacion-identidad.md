@@ -14,21 +14,16 @@ Consentimiento → Anverso (marco guía) → Reverso (marco guía) → Selfie + 
 
 | Resultado | Condición | Qué pasa |
 | --- | --- | --- |
-| Aprobación automática | MRZ válida con consenso, NUI igual al registrado, nombre coincidente, mayor de edad, cédula vigente, prueba de vida superada y distancia facial ≤ 0,47 | Identidad verificada sin intervención humana |
-| Revisión del asesor | Distancia entre 0,47 y 0,60, nombre con diferencias, MRZ ilegible (cédula antigua) o baja calidad tras 3 intentos | El asesor ve capturas, datos leídos vs. registrados y el motivo |
+| Aprobación automática | MRZ aceptada, NUI igual al registrado, nombre coincidente, mayor de edad, cédula vigente, prueba de vida superada y distancia facial ≤ 0,50 | Identidad verificada sin intervención humana |
+| Revisión del asesor | Distancia entre 0,50 y 0,60, nombre con diferencias, MRZ ilegible (cédula antigua) o baja calidad tras 3 intentos | El asesor ve capturas, datos leídos vs. registrados y el motivo |
 | Reintentar | Distancia > 0,60 o prueba de vida fallida | Hasta 3 intentos; luego pasa al asesor |
 | Rechazo automático | Cédula vencida o menor de edad | Mensaje claro al cliente |
 
 Se aprueba automáticamente **la identidad, no el crédito**. La decisión se calcula **en el servidor**
 con las imágenes subidas; el navegador solo guía la captura.
 
-| Fase | Contenido | Estado |
-| --- | --- | --- |
-| 0 | Calibración con cédulas reales | Hecha (sección 2) |
-| 1 | Consentimiento, modelo `IdentityVerification`, capturas con marco guía, comparación facial en el servidor, cola del asesor | Pendiente |
-| 2 | Lectura de la MRZ, comparación de datos, reglas de aprobación automática | Pendiente |
-| 3 | Prueba de vida con retos | Pendiente |
-| 4 | Métricas y documentación final | Pendiente |
+El detalle de cada fase (modelo, endpoints, pantallas, pruebas y estado) está en
+[fases-verificacion-identidad.md](fases-verificacion-identidad.md).
 
 ## 2. Calibración (fase 0)
 
@@ -61,10 +56,17 @@ Distancia euclidiana entre descriptores de 128 dimensiones (menor = más parecid
 | 192 pares (muestra + rostros de ejemplo) | mínimo 0,593 · 5 % más bajo ≤ 0,626 · mediana 0,753 |
 | Pares muy parecidos (rostros de ejemplo entre sí, misma fiesta y maquillaje) | mínimo 0,468 · 3 de 231 ≤ 0,50 |
 
-**Umbrales:** coincide si *d* ≤ 0,47 (por debajo de todo impostor observado); dudoso si
+**Umbrales calibrados:** coincide si *d* ≤ 0,47 (por debajo de todo impostor observado); dudoso si
 0,47 < *d* ≤ 0,60; no coincide si *d* > 0,60. Todos los pares cédula↔rostro de la misma persona
-(≤ 0,443) quedan en "coincide". El porcentaje que ve el asesor es 100 / (1 + e^((d − 0,535)/0,04)):
-≈ 84 % en 0,47 y ≈ 16 % en 0,60. Es una escala para leer la distancia, no una probabilidad.
+(≤ 0,443) quedan en "coincide".
+
+**Umbrales en uso (más generosos, por decisión del equipo):** coincide si *d* ≤ 0,50. Con solo 3
+personas en la muestra se priorizó que la aprobación automática funcione con clientes reales (en el
+navegador los genuinos llegaron a 0,467); se acepta que el 1,3 % de los pares de personas muy
+parecidas quede por debajo de 0,50, riesgo que mitigan los demás controles (MRZ, cédula registrada,
+nombre y prueba de vida). Están en `backend/src/config/identity.js` y se pueden ajustar por
+variables de entorno. El porcentaje que ve el asesor es 100 / (1 + e^((d − 0,55)/0,04)): ≈ 78 % en
+0,50 y ≈ 22 % en 0,60. Es una escala para leer la distancia, no una probabilidad.
 
 Hallazgos:
 
@@ -137,7 +139,7 @@ Porcentajes del ancho y alto de la tarjeta (proporción medida 1,557–1,568; fo
 
 1. **Comparación facial en el servidor:** `@vladmandic/face-api` con TensorFlow WASM, sin compilación
    nativa en Docker. La imagen se carga con `sharp().rotate()` y se compara a color. La detección
-   reintenta con confianza 0,2 y luego con margen. Umbrales 0,47 / 0,60.
+   reintenta con confianza 0,2 y luego con margen. Umbrales en uso 0,50 / 0,60.
 2. **MRZ en el servidor:** Tesseract.js con el modelo `mrz` (incluido en la imagen, con su licencia),
    solo con los caracteres `A–Z 0–9 <`. Se exigen consenso de 2 lecturas, dígitos de control y
    verificador de la cédula.

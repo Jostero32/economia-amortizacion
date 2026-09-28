@@ -1,0 +1,456 @@
+const { Op } = require('sequelize');
+const { IdentityVerification, User } = require('../models');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../utils/auditLogger');
+const {
+  CONSENT_VERSION,
+  FACE_DOUBTFUL_DISTANCE,
+  FACE_MATCH_DISTANCE,
+  MAX_ATTEMPTS,
+  MIN_BACK_SHARPNESS,
+} = require('../config/identity');
+const { normalizeImage, cropCard, sharpness } = require('../services/identity/imageService');
+const { detectMainFace, compareFaces } = require('../services/identity/faceService');
+const { saveImage, readImage, resolveImage } = require('../services/identity/identityStorage');
+const { decide, storedState } = require('../services/identity/decisionEngine');
+const { identityStatus } = require('../services/identity/identityStatus');
+
+const STATES = ['EN_CURSO', 'EN_REVISION', 'APROBADA', 'RECHAZADA'];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Un id mal formado haría fallar la consulta en PostgreSQL: se trata como inexistente
+const findById = (id, options) => (UUID_PATTERN.test(String(id)) ? IdentityVerification.findByPk(id, options) : null);
+const FILE_FIELDS = { anverso: 'anversoRuta', reverso: 'reversoRuta', selfie: 'selfieRuta' };
+
+// ---------------------------------------------------------------------------------------------
+// Vistas: el cliente no recibe rutas de archivos ni datos internos de los controles
+// ---------------------------------------------------------------------------------------------
+function clientView(verification) {
+  if (!verification) return null;
+  const v = verification;
+  return {
+    id: v.id,
+    estado: v.estado,
+    aprobacionAutomatica: v.aprobacionAutomatica,
+    intentos: v.intentos,
+    intentosRestantes: Math.max(0, MAX_ATTEMPTS - v.intentos),
+    motivos: v.motivos || [],
+    controles: (v.controles || []).map(({ codigo, ok, detalle }) => ({ codigo, ok, detalle })),
+    rostro: v.rostroResultado ? { resultado: v.rostroResultado, nivel: Number(v.rostroNivel) } : null,
+    tipoCedula: v.tipoCedula,
+    capturas: { anverso: Boolean(v.anversoRuta), reverso: Boolean(v.reversoRuta), selfie: Boolean(v.selfieRuta) },
+    fechaVerificacion: v.fechaVerificacion,
+    vigenteHasta: v.vigenteHasta,
+    comentarioRevision: v.revisadoPor ? v.comentarioRevision : null,
+    createdAt: v.createdAt,
+    updatedAt: v.updatedAt,
+  };
+}
+
+function adminView(verification) {
+  const v = verification;
+  return {
+    ...clientView(v),
+    controles: v.controles || [],
+    rostroDistancia: v.rostroDistancia === null ? null : Number(v.rostroDistancia),
+    datosMrz: v.datosMrz,
+    vida: v.vida,
+    vidaCapturas: (v.vidaRutas || []).length,
+    consentimiento: { version: v.consentimientoVersion, fecha: v.consentimientoFecha, ip: v.consentimientoIp },
+    fechaRevision: v.fechaRevision,
+    comentarioRevision: v.comentarioRevision,
+    user: v.user,
+    reviewer: v.reviewer,
+  };
+}
+
+const clientIp = (req) => String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+  .replace('::ffff:', '') || null;
+
+/** Verificación propia que todavía admite capturas; responde el error si no. */
+async function findOwnInProgress(req, res) {
+  const verification = await findById(req.params.id);
+  if (!verification || verification.userId !== req.user.id) {
+    errorResponse(res, 'Verificación no encontrada.', 404);
+    return null;
+  }
+  if (verification.estado !== 'EN_CURSO') {
+    errorResponse(res, 'Esta verificación ya fue enviada y no admite cambios.', 400);
+    return null;
+  }
+  return verification;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cliente
+// ---------------------------------------------------------------------------------------------
+
+/** Estado de la verificación del cliente autenticado. */
+async function getMyVerification(req, res, next) {
+  try {
+    const { verification, verificada, puedeSolicitar } = await identityStatus(req.user.id);
+    return successResponse(res, {
+      verification: clientView(verification),
+      verificada,
+      puedeSolicitar,
+      consentimientoVersion: CONSENT_VERSION,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Acepta el consentimiento e inicia la verificación (o reanuda la que está en curso). */
+async function startVerification(req, res, next) {
+  try {
+    const { aceptaConsentimiento, consentimientoVersion } = req.body;
+    if (aceptaConsentimiento !== true) {
+      return errorResponse(res, 'Debes autorizar el tratamiento de tus datos para verificar tu identidad.', 400);
+    }
+    if (consentimientoVersion !== CONSENT_VERSION) {
+      return errorResponse(res, 'El texto de la autorización cambió. Recarga la página y vuelve a leerlo.', 400);
+    }
+
+    const { verification: latest, verificada } = await identityStatus(req.user.id);
+    if (verificada) {
+      return errorResponse(res, 'Tu identidad ya está verificada.', 409);
+    }
+    if (latest?.estado === 'EN_REVISION') {
+      return errorResponse(res, 'Tu verificación está en revisión. Un asesor la resolverá pronto.', 409);
+    }
+
+    const consent = {
+      consentimientoVersion,
+      consentimientoFecha: new Date(),
+      consentimientoIp: clientIp(req),
+    };
+    const verification = latest?.estado === 'EN_CURSO'
+      ? await latest.update(consent)
+      : await IdentityVerification.create({ userId: req.user.id, ...consent });
+
+    await logAudit({
+      req,
+      accion: 'CONSENTIMIENTO_BIOMETRICO',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: { version: consentimientoVersion },
+    });
+
+    return successResponse(res, { verification: clientView(verification) }, 201, 'Autorización registrada.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Anverso: debe verse la foto del titular. */
+async function uploadFront(req, res, next) {
+  try {
+    const verification = await findOwnInProgress(req, res);
+    if (!verification) return undefined;
+    if (!req.file) return errorResponse(res, 'Adjunta la foto del anverso de tu cédula.', 400);
+
+    const { buffer } = await normalizeImage(req.file.buffer);
+    const card = await cropCard(buffer);
+    const face = await detectMainFace(card.buffer);
+    if (!face) {
+      return errorResponse(
+        res,
+        'No encontramos la foto de tu cédula. Encuadra el anverso completo dentro del marco, con buena luz y sin reflejos.',
+        422
+      );
+    }
+
+    const anversoRuta = await saveImage(verification.id, 'anverso', card.buffer);
+    await verification.update({ anversoRuta });
+    await logAudit({
+      req,
+      accion: 'CAPTURA_IDENTIDAD',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: { tipo: 'ANVERSO', recortada: card.cropped, confianzaRostro: Math.round(face.score * 100) / 100 },
+    });
+
+    return successResponse(res, { verification: clientView(verification) }, 200, 'Recibimos el anverso de tu cédula.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Reverso: se guarda y se informa si la franja inferior se ve nítida. */
+async function uploadBack(req, res, next) {
+  try {
+    const verification = await findOwnInProgress(req, res);
+    if (!verification) return undefined;
+    if (!req.file) return errorResponse(res, 'Adjunta la foto del reverso de tu cédula.', 400);
+
+    const { buffer } = await normalizeImage(req.file.buffer);
+    const card = await cropCard(buffer);
+    const nitidez = Math.round(await sharpness(card.buffer));
+
+    const reversoRuta = await saveImage(verification.id, 'reverso', card.buffer);
+    await verification.update({ reversoRuta });
+    await logAudit({
+      req,
+      accion: 'CAPTURA_IDENTIDAD',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: { tipo: 'REVERSO', recortada: card.cropped, nitidez },
+    });
+
+    return successResponse(res, {
+      verification: clientView(verification),
+      nitidez,
+      advertencia: nitidez < MIN_BACK_SHARPNESS
+        ? 'La franja inferior se ve borrosa. Si puedes, repite la foto con más luz y la cédula quieta.'
+        : null,
+    }, 200, 'Recibimos el reverso de tu cédula.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Controles del rostro: foto de la cédula, rostro en la selfie y comparación entre ambos. */
+function faceControls(cedulaFace, selfieFace) {
+  const controles = [
+    {
+      codigo: 'ROSTRO_CEDULA',
+      ok: Boolean(cedulaFace),
+      detalle: cedulaFace ? 'Encontramos la foto de tu cédula.' : 'No encontramos la foto en el anverso de tu cédula.',
+      siFalla: 'REINTENTO',
+    },
+    {
+      codigo: 'ROSTRO_SELFIE',
+      ok: Boolean(selfieFace),
+      detalle: selfieFace
+        ? 'Tu rostro se ve en la selfie.'
+        : 'No encontramos tu rostro en la selfie: mira de frente a la cámara, con buena luz.',
+      siFalla: 'REINTENTO',
+    },
+  ];
+  if (!cedulaFace || !selfieFace) return { controles, comparison: null };
+
+  const comparison = compareFaces(cedulaFace.descriptor, selfieFace.descriptor);
+  const nivel = `${Math.round(comparison.nivel)} %`;
+  const detalle = {
+    COINCIDE: `Tu rostro coincide con la foto de la cédula (${nivel}).`,
+    DUDOSO: `La coincidencia de tu rostro con la cédula no es concluyente (${nivel}).`,
+    NO_COINCIDE: `Tu rostro no coincide con la foto de la cédula (${nivel}).`,
+  }[comparison.resultado];
+  controles.push({
+    codigo: 'ROSTRO_COINCIDE',
+    ok: comparison.resultado === 'COINCIDE',
+    detalle,
+    siFalla: comparison.resultado === 'DUDOSO' ? 'REVISION' : 'REINTENTO',
+  });
+  return { controles, comparison };
+}
+
+/** Selfie: se compara con la cédula, se aplican las reglas y se decide. */
+async function uploadSelfie(req, res, next) {
+  try {
+    const verification = await findOwnInProgress(req, res);
+    if (!verification) return undefined;
+    if (!verification.anversoRuta || !verification.reversoRuta) {
+      return errorResponse(res, 'Primero toma las fotos del anverso y del reverso de tu cédula.', 400);
+    }
+    const selfieFile = req.files?.selfie?.[0];
+    if (!selfieFile) return errorResponse(res, 'Adjunta tu selfie.', 400);
+
+    const { buffer: selfie } = await normalizeImage(selfieFile.buffer);
+    const selfieRuta = await saveImage(verification.id, 'selfie', selfie);
+
+    const anverso = await readImage(verification.anversoRuta);
+    const cedulaFace = anverso ? await detectMainFace(anverso) : null;
+    const selfieFace = await detectMainFace(selfie);
+    const { controles, comparison } = faceControls(cedulaFace, selfieFace);
+
+    const intentos = verification.intentos + 1;
+    const decision = decide({ controles, intentos, maxIntentos: MAX_ATTEMPTS });
+    const aprobada = decision.resultado === 'APROBADA';
+
+    await verification.update({
+      selfieRuta,
+      intentos,
+      rostroDistancia: comparison?.distancia ?? null,
+      rostroNivel: comparison?.nivel ?? null,
+      rostroResultado: comparison?.resultado ?? null,
+      controles,
+      motivos: decision.motivos,
+      estado: storedState(decision.resultado),
+      aprobacionAutomatica: decision.aprobacionAutomatica,
+      fechaVerificacion: aprobada ? new Date() : null,
+    });
+
+    await logAudit({
+      req,
+      accion: 'VERIFICACION_IDENTIDAD',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: {
+        resultado: decision.resultado,
+        automatica: decision.aprobacionAutomatica,
+        intentos,
+        distancia: comparison?.distancia ?? null,
+      },
+    });
+
+    const messages = {
+      APROBADA: 'Tu identidad quedó verificada.',
+      EN_REVISION: 'Recibimos tu verificación. Un asesor la revisará.',
+      REINTENTAR: 'No pudimos verificar tu identidad. Revisa los motivos e inténtalo de nuevo.',
+      RECHAZADA: 'No pudimos verificar tu identidad.',
+    };
+    return successResponse(
+      res,
+      { verification: clientView(verification), resultado: decision.resultado },
+      200,
+      messages[decision.resultado]
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Imagen de una verificación: solo el titular, el asesor o el administrador. */
+async function getFile(req, res, next) {
+  try {
+    const verification = await findById(req.params.id);
+    if (!verification) return errorResponse(res, 'Verificación no encontrada.', 404);
+
+    const isOwner = verification.userId === req.user.id;
+    const isStaff = ['ASESOR', 'ADMIN'].includes(req.user.rol);
+    if (!isOwner && !isStaff) return errorResponse(res, 'No tiene permiso para ver esta imagen.', 403);
+
+    const { tipo } = req.params;
+    const vida = /^vida-(\d)$/.exec(tipo);
+    let ruta = null;
+    if (FILE_FIELDS[tipo]) ruta = verification[FILE_FIELDS[tipo]];
+    else if (vida) ruta = (verification.vidaRutas || [])[Number(vida[1]) - 1];
+    else return errorResponse(res, 'Tipo de imagen no válido.', 400);
+
+    const fullPath = resolveImage(ruta);
+    if (!fullPath) return errorResponse(res, 'La imagen no está disponible.', 404);
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.sendFile(fullPath);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Asesor / Administrador
+// ---------------------------------------------------------------------------------------------
+const USER_ATTRIBUTES = ['id', 'nombre', 'email', 'cedula', 'telefono'];
+
+/** Cola de verificaciones; las pendientes de revisión, de la más antigua a la más reciente. */
+async function listVerifications(req, res, next) {
+  try {
+    const { estado } = req.query;
+    if (estado && !STATES.includes(estado)) {
+      return errorResponse(res, `Estado inválido. Opciones: ${STATES.join(', ')}.`, 400);
+    }
+    const verifications = await IdentityVerification.findAll({
+      where: estado ? { estado } : {},
+      include: [{ model: User, as: 'user', attributes: USER_ATTRIBUTES }],
+      order: estado === 'EN_REVISION' ? [['updatedAt', 'ASC']] : [['updatedAt', 'DESC']],
+      limit: 200,
+    });
+    const counts = await IdentityVerification.count({ group: ['estado'] });
+    return successResponse(res, {
+      verifications: verifications.map(adminView),
+      counts: Object.fromEntries(STATES.map((s) => [s, Number(counts.find((c) => c.estado === s)?.count || 0)])),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getVerification(req, res, next) {
+  try {
+    const verification = await findById(req.params.id, {
+      include: [
+        { model: User, as: 'user', attributes: USER_ATTRIBUTES },
+        { model: User, as: 'reviewer', attributes: ['id', 'nombre', 'email'] },
+      ],
+    });
+    if (!verification) return errorResponse(res, 'Verificación no encontrada.', 404);
+
+    // Otras verificaciones del mismo cliente (intentos anteriores rechazados)
+    const history = await IdentityVerification.findAll({
+      where: { userId: verification.userId, id: { [Op.ne]: verification.id } },
+      attributes: ['id', 'estado', 'createdAt', 'comentarioRevision'],
+      order: [['createdAt', 'DESC']],
+    });
+    return successResponse(res, {
+      verification: adminView(verification),
+      history,
+      umbrales: { rostroCoincide: FACE_MATCH_DISTANCE, rostroDudoso: FACE_DOUBTFUL_DISTANCE },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Decisión del asesor sobre una verificación en revisión. */
+async function decideVerification(req, res, next) {
+  try {
+    const { estado } = req.body;
+    const comentario = String(req.body.comentario || '').trim();
+    if (!['APROBADA', 'RECHAZADA'].includes(estado)) {
+      return errorResponse(res, 'La decisión debe ser APROBADA o RECHAZADA.', 400);
+    }
+    if (estado === 'RECHAZADA' && comentario.length < 5) {
+      return errorResponse(res, 'Explica al cliente por qué no se aprueba su verificación.', 400, {
+        comentario: 'El motivo es obligatorio al rechazar.',
+      });
+    }
+
+    const verification = await findById(req.params.id);
+    if (!verification) return errorResponse(res, 'Verificación no encontrada.', 404);
+    if (verification.estado !== 'EN_REVISION') {
+      return errorResponse(res, 'Solo se pueden resolver verificaciones en revisión.', 400);
+    }
+
+    const aprobada = estado === 'APROBADA';
+    await verification.update({
+      estado,
+      aprobacionAutomatica: false,
+      revisadoPor: req.user.id,
+      fechaRevision: new Date(),
+      comentarioRevision: comentario || null,
+      fechaVerificacion: aprobada ? new Date() : null,
+      vigenteHasta: aprobada ? verification.datosMrz?.fechaVencimiento || null : verification.vigenteHasta,
+    });
+
+    await logAudit({
+      req,
+      accion: 'REVISION_IDENTIDAD',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: { estado, comentario: comentario || null },
+    });
+
+    return successResponse(
+      res,
+      { verification: adminView(verification) },
+      200,
+      aprobada ? 'Identidad aprobada.' : 'Verificación rechazada.'
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  clientView,
+  getMyVerification,
+  startVerification,
+  uploadFront,
+  uploadBack,
+  uploadSelfie,
+  getFile,
+  listVerifications,
+  getVerification,
+  decideVerification,
+};

@@ -8,8 +8,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const source = join(root, 'node_modules', '@vladmandic', 'face-api', 'model');
 const target = join(root, 'public', 'models', 'face-api');
 
-// Detector de rostros, puntos faciales y descriptor de 128 dimensiones
-const MODELS = ['ssd_mobilenetv1_model', 'face_landmark_68_model', 'face_recognition_model'];
+// El navegador solo guía la captura: detector de rostros y puntos faciales (la comparación de
+// rostros se calcula en el servidor)
+const MODELS = ['ssd_mobilenetv1_model', 'face_landmark_68_model'];
 
 mkdirSync(target, { recursive: true });
 for (const model of MODELS) {

@@ -19,6 +19,7 @@ const {
 const adminController = require('../controllers/adminController');
 const applicationController = require('../controllers/applicationController');
 const documentController = require('../controllers/documentController');
+const identityController = require('../controllers/identityController');
 const institutionController = require('../controllers/institutionController');
 
 // Todas las rutas bajo /api/admin requieren autenticación
@@ -34,11 +35,15 @@ router.get('/applications', advisorAuth, applicationController.getAllApplication
 router.get('/investment-applications/:id', advisorAuth, applicationController.getInvestmentApplicationById);
 router.get('/applications/:id', advisorAuth, applicationController.getCreditApplicationById);
 router.patch('/applications/:id/status', advisorAuth, applicationController.updateApplicationStatus);
-router.patch('/applications/:id/biometric', advisorAuth, applicationController.recordBiometricCheck);
 
 // Documentos y Validación Biométrica Simulada
 router.get('/documents', advisorAuth, documentController.getAllDocuments);
 router.patch('/documents/:id/status', advisorAuth, documentController.updateDocumentStatus);
+
+// Verificaciones de identidad
+router.get('/identity-verifications', advisorAuth, identityController.listVerifications);
+router.get('/identity-verifications/:id', advisorAuth, identityController.getVerification);
+router.patch('/identity-verifications/:id/decision', advisorAuth, identityController.decideVerification);
 
 // Listado de usuarios/clientes
 router.get('/users', advisorAuth, adminController.getUsers);

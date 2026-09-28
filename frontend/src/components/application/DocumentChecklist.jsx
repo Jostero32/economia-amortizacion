@@ -3,22 +3,10 @@ import { clientService } from '../../services/api';
 import Badge from '../Badge';
 import Button from '../Button';
 import Alert from '../Alert';
-import SelfieCamera from './SelfieCamera';
 import { CLOSED_STATUSES, DOCUMENT_STATUS, requiredDocumentsFor } from './applicationStatus';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-// El asesor compara el rostro de la cédula con el de la selfie: ambas deben ser imágenes
-const FACE_DOCUMENT_TYPES = ['CEDULA', 'SELFIE'];
-
-function fileTypeError(file, docType) {
-  if (FACE_DOCUMENT_TYPES.includes(docType) && !IMAGE_TYPES.includes(file.type)) {
-    return 'La cédula y la selfie deben ser una foto JPG, PNG o WEBP (no PDF) para la validación biométrica.';
-  }
-  if (!ACCEPTED_TYPES.includes(file.type)) return 'Solo se aceptan archivos PDF o imágenes JPG, PNG o WEBP.';
-  return null;
-}
 
 // Último documento subido de cada tipo (si se volvió a subir, cuenta el más reciente)
 function latestByType(documents = []) {
@@ -48,9 +36,6 @@ export default function DocumentChecklist({ application, applicationField, onUpl
 
   const [docType, setDocType] = useState(pendingTypes[0]?.tipo || 'CEDULA');
   const [file, setFile] = useState(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [consent, setConsent] = useState(false);
-  const isSelfie = docType === 'SELFIE';
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -58,9 +43,8 @@ export default function DocumentChecklist({ application, applicationField, onUpl
   const handleFileChange = (event) => {
     const selected = event.target.files?.[0] || null;
     setError(null);
-    const typeError = selected && fileTypeError(selected, docType);
-    if (typeError) {
-      setError(typeError);
+    if (selected && !ACCEPTED_TYPES.includes(selected.type)) {
+      setError('Solo se aceptan archivos PDF o imágenes JPG, PNG o WEBP.');
       setFile(null);
       event.target.value = '';
       return;
@@ -77,16 +61,7 @@ export default function DocumentChecklist({ application, applicationField, onUpl
   const handleUpload = async (event) => {
     event.preventDefault();
     if (!file) {
-      setError(isSelfie ? 'Toma la selfie con la cámara o selecciona una foto.' : 'Selecciona el archivo que quieres subir.');
-      return;
-    }
-    const typeError = fileTypeError(file, docType);
-    if (typeError) {
-      setError(typeError);
-      return;
-    }
-    if (isSelfie && !consent) {
-      setError('Debes autorizar el tratamiento de tu imagen para la validación biométrica.');
+      setError('Selecciona el archivo que quieres subir.');
       return;
     }
     setUploading(true);
@@ -97,11 +72,9 @@ export default function DocumentChecklist({ application, applicationField, onUpl
       body.append('archivo', file);
       body.append('tipo', docType);
       body.append(applicationField, application.id);
-      if (isSelfie) body.append('consentimientoBiometrico', 'true');
       await clientService.uploadDocument(body);
       setSuccess('Documento recibido. Un asesor lo revisará.');
       setFile(null);
-      setConsent(false);
       event.target.reset();
       onUploaded?.();
     } catch (err) {
@@ -109,16 +82,6 @@ export default function DocumentChecklist({ application, applicationField, onUpl
     } finally {
       setUploading(false);
     }
-  };
-
-  const acceptedInput = FACE_DOCUMENT_TYPES.includes(docType)
-    ? IMAGE_TYPES.join(',')
-    : ACCEPTED_TYPES.join(',');
-
-  const changeDocType = (value) => {
-    setDocType(value);
-    setError(null);
-    if (file && fileTypeError(file, value)) setFile(null);
   };
 
   return (
@@ -176,7 +139,7 @@ export default function DocumentChecklist({ application, applicationField, onUpl
             <select
               id="doc-type"
               value={docType}
-              onChange={(e) => changeDocType(e.target.value)}
+              onChange={(e) => setDocType(e.target.value)}
               className="w-full h-11 px-3 rounded-lg border border-gray-200 bg-gray-50 text-[14px]"
             >
               {requiredDocuments.map((doc) => (
@@ -185,50 +148,23 @@ export default function DocumentChecklist({ application, applicationField, onUpl
               <option value="OTRO">Otro documento de respaldo</option>
             </select>
           </div>
-          {isSelfie && (
-            <div className="space-y-2">
-              <Button variant="secondary" iconName="photo_camera" className="w-full" onClick={() => setCameraOpen(true)}>
-                Tomar selfie con la cámara
-              </Button>
-              {file && file.name.startsWith('selfie-camara-') && (
-                <p className="text-[12px] text-emerald-700">Selfie capturada y lista para enviar.</p>
-              )}
-            </div>
-          )}
           <div className="space-y-1.5">
             <label htmlFor="doc-file" className="block text-[13px] font-medium text-primary">
-              {FACE_DOCUMENT_TYPES.includes(docType)
-                ? `${isSelfie ? 'O sube una foto' : 'Foto'} (JPG, PNG o WEBP, máximo 5 MB)`
-                : 'Archivo (PDF o imagen, máximo 5 MB)'}
+              Archivo (PDF o imagen, máximo 5 MB)
             </label>
             <input
               id="doc-file"
               type="file"
-              accept={acceptedInput}
+              accept="image/jpeg,image/png,image/webp,application/pdf"
               onChange={handleFileChange}
               className="w-full text-[13px] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-100 file:text-primary border border-gray-200 rounded-lg p-1"
             />
           </div>
-          {isSelfie && (
-            <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-lg bg-surface-container-low border border-surface-container-high">
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="h-4 w-4 mt-0.5 accent-secondary" />
-              <span className="text-[12px] text-gray-600">
-                Autorizo el tratamiento de mi imagen facial (dato biométrico, LOPDP) únicamente para verificar
-                que soy el titular de la cédula en esta solicitud.
-              </span>
-            </label>
-          )}
           <Button type="submit" variant="fintech" iconName="cloud_upload" loading={uploading} loadingText="Subiendo..." className="w-full">
             Subir documento
           </Button>
         </form>
       )}
-
-      <SelfieCamera
-        isOpen={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onCapture={(captured) => { setFile(captured); setError(null); }}
-      />
     </div>
   );
 }

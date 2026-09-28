@@ -72,11 +72,8 @@ export default function Register() {
         telefono: formData.telefono.trim(),
       });
 
-      navigate('/login', {
-        state: {
-          success: 'Cuenta creada correctamente. Ya puedes iniciar sesión con tus credenciales.',
-        },
-      });
+      // La cuenta ya quedó con sesión iniciada: se ofrece verificar la identidad (o hacerlo más tarde)
+      navigate('/cliente/verificacion?bienvenida=1');
     } catch (err) {
       setError(err.message || 'No se pudo crear la cuenta. Intenta nuevamente.');
       if (err.errors && !Array.isArray(err.errors)) {

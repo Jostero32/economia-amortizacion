@@ -8,7 +8,9 @@ const {
   Charge,
   InvestmentProduct,
   InvestmentRate,
+  IdentityVerification,
 } = require('../models');
+const { CONSENT_VERSION } = require('../config/identity');
 
 async function seedDatabase() {
   console.log('--- Iniciando carga de semilla de datos (Seed) ---');
@@ -82,6 +84,23 @@ async function seedDatabase() {
       await exists.update({ cedula: u.cedula });
       console.log(`[Seed] Cédula del usuario demo ${u.email} actualizada a una cédula válida.`);
     }
+  }
+
+  // Cliente de demostración con identidad verificada: permite probar solicitudes sin hacer la
+  // verificación con cámara (para probarla, basta registrar un cliente nuevo)
+  const demoClient = await User.findOne({ where: { email: 'cliente@finanecuador.local' } });
+  if (demoClient && !(await IdentityVerification.findOne({ where: { userId: demoClient.id } }))) {
+    await IdentityVerification.create({
+      userId: demoClient.id,
+      estado: 'APROBADA',
+      consentimientoVersion: CONSENT_VERSION,
+      consentimientoFecha: new Date(),
+      fechaVerificacion: new Date(),
+      controles: [],
+      motivos: [],
+      comentarioRevision: 'Cliente de demostración: identidad marcada como verificada por la semilla de datos.',
+    });
+    console.log('[Seed] Identidad del cliente de demostración marcada como verificada.');
   }
 
   // 3. Segmentos Oficiales del Banco Central del Ecuador (Septiembre 2026)

@@ -544,7 +544,7 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     expect(res.body.data.application.product).toBeDefined();
   });
 
-  test('el asesor aprueba la inversión cuando documentos y biometría están validados', async () => {
+  test('el asesor aprueba la inversión con los documentos validados y la identidad verificada', async () => {
     const documentTypes = ['CEDULA', 'COMPROBANTE_DOMICILIO', 'COMPROBANTE_INGRESOS', 'SELFIE'];
 
     await Promise.all(documentTypes.map((tipo) => Document.create({
@@ -578,6 +578,5 @@ describe('Integración: Solicitudes de Cliente (/api/credit-applications y /api/
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.application.estado).toBe('APROBADA');
-    expect(res.body.data.application.biometriaValidada).toBe(true);
   });
 });

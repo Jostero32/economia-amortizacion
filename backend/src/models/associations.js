@@ -13,6 +13,7 @@ const CreditApplication = require('./CreditApplication');
 const InvestmentApplication = require('./InvestmentApplication');
 const Document = require('./Document');
 const AuditLog = require('./AuditLog');
+const IdentityVerification = require('./IdentityVerification');
 
 function setupAssociations() {
   // Segmentos y Productos de Crédito
@@ -82,6 +83,11 @@ function setupAssociations() {
 
   User.hasMany(Document, { foreignKey: 'revisadoPor', as: 'reviewedDocuments' });
   Document.belongsTo(User, { foreignKey: 'revisadoPor', as: 'reviewer' });
+
+  // Verificación de identidad (una por persona, con historial de intentos rechazados)
+  User.hasMany(IdentityVerification, { foreignKey: 'userId', as: 'identityVerifications', onDelete: 'CASCADE' });
+  IdentityVerification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+  IdentityVerification.belongsTo(User, { foreignKey: 'revisadoPor', as: 'reviewer' });
 }
 
 module.exports = {
@@ -101,4 +107,5 @@ module.exports = {
   InvestmentApplication,
   Document,
   AuditLog,
+  IdentityVerification,
 };

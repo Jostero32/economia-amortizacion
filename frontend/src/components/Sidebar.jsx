@@ -9,6 +9,7 @@ export default function Sidebar({ mode = 'client' }) {
     { to: '/cliente', label: 'Mi Resumen', iconName: 'dashboard', end: true },
     { to: '/cliente/solicitudes', label: 'Mis Solicitudes', iconName: 'description' },
     { to: '/cliente/simulaciones', label: 'Mis Simulaciones', iconName: 'history' },
+    { to: '/cliente/verificacion', label: 'Mi Identidad', iconName: 'verified_user' },
     { to: '/cliente/perfil', label: 'Mi Perfil', iconName: 'person' },
     { to: '/creditos/simulador', label: 'Simular Crédito', iconName: 'calculate' },
     { to: '/inversiones/simulador', label: 'Simular Inversión', iconName: 'trending_up' },
@@ -17,6 +18,7 @@ export default function Sidebar({ mode = 'client' }) {
   const adminLinks = [
     { to: '/admin', label: 'Panel General', iconName: 'analytics', end: true, role: 'ASESOR' },
     { to: '/admin/solicitudes', label: 'Solicitudes', iconName: 'assignment', role: 'ASESOR' },
+    { to: '/admin/verificaciones', label: 'Verificaciones', iconName: 'verified_user', role: 'ASESOR' },
     { to: '/admin/documentos', label: 'Documentos', iconName: 'folder_shared', role: 'ASESOR' },
     { to: '/admin/usuarios', label: 'Usuarios y Accesos', iconName: 'group', role: 'ASESOR' },
 

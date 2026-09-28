@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import Table from '../../components/Table';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
+import IdentityBadge from '../../components/identity/IdentityBadge';
 import { LoadingState } from '../../components/Spinner';
 
 export default function AdminDashboard() {
@@ -184,7 +185,7 @@ export default function AdminDashboard() {
               'Producto',
               { label: 'Monto', align: 'text-right' },
               'Estado',
-              'Biometría',
+              'Identidad',
               { label: 'Acción', align: 'text-right' },
             ]}
           >
@@ -213,17 +214,7 @@ export default function AdminDashboard() {
                   <Badge variant={app.estado}>{app.estado}</Badge>
                 </td>
                 <td className="py-3 px-4 text-[12px]">
-                  {app.biometriaValidada ? (
-                    <span className="text-emerald-800 font-bold flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                      Validada
-                    </span>
-                  ) : (
-                    <span className="text-amber-800 font-bold flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px]">schedule</span>
-                      Pendiente
-                    </span>
-                  )}
+                  <IdentityBadge identidad={app.identidad} legacyValidated={app.biometriaValidada} />
                 </td>
                 <td className="py-3 px-4 text-right">
                   <Link to={app.applicationType === 'INVERSION' ? `/admin/solicitudes/inversion/${app.id}` : `/admin/solicitudes/${app.id}`}>

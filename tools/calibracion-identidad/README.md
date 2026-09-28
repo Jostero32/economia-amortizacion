@@ -36,11 +36,11 @@ de cada titular (sin ella no se puede medir la distancia cédula↔rostro de la 
 ## Qué informa
 
 1. **Rostros:** la estrategia de detección de cada imagen, la distancia de cada par de la misma
-   persona con su banda (coincide ≤ 0,47, dudoso ≤ 0,60) y la distribución de las distancias entre
+   persona con su banda (coincide ≤ 0,50, dudoso ≤ 0,60) y la distribución de las distancias entre
    personas distintas. Los rostros de ejemplo de face-api se usan como impostores adicionales. Si los
    grupos se solapan, lo avisa.
 2. **MRZ:** si el reverso se lee con consenso, en cuántos intentos y con qué nitidez. Luego, una matriz
    de robustez (ancho de la tarjeta × desenfoque), la cantidad de lecturas aceptadas pero erróneas en
    campos protegidos (debe ser 0) y la tasa de acierto según la nitidez mínima exigida.
 
-Los umbrales de la herramienta deben coincidir con los de `frontend/src/utils/faceMatch.js`.
+Los umbrales de la herramienta deben coincidir con los de `backend/src/config/identity.js`.

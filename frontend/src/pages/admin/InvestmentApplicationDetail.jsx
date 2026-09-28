@@ -26,7 +26,7 @@ export default function InvestmentApplicationDetail() {
   const loadApplication = async () => {
     try {
       const response = await adminService.getInvestmentApplicationById(id);
-      setApplication(response.data.application);
+      setApplication({ ...response.data.application, identidad: response.data.identidad });
     } catch (err) {
       setError(err.message || 'No se pudo cargar la solicitud.');
     } finally {

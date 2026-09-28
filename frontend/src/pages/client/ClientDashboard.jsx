@@ -7,12 +7,15 @@ import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import Table from '../../components/Table';
 import { LoadingState } from '../../components/Spinner';
+import IdentityStatusCard from '../../components/identity/IdentityStatusCard';
+import { useIdentityStatus } from '../../components/identity/identityStatus';
 
 export default function ClientDashboard() {
   const { user } = useAuth();
   const [creditApps, setCreditApps] = useState([]);
   const [investmentApps, setInvestmentApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const identity = useIdentityStatus();
 
   useEffect(() => {
     Promise.all([
@@ -49,6 +52,8 @@ export default function ClientDashboard() {
 
   return (
     <div className="space-y-space-md">
+      <IdentityStatusCard status={identity.status} hideWhenVerified />
+
       {/* Welcome Banner */}
       <div className="bg-primary text-on-primary p-6 sm:p-8 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-primary-container relative overflow-hidden">
         <div className="absolute -right-10 -bottom-10 w-40 h-40 rounded-full bg-secondary opacity-15 pointer-events-none"></div>
@@ -197,7 +202,6 @@ export default function ClientDashboard() {
               { label: 'Monto', align: 'text-right' },
               'Plazo',
               'Estado',
-              'Biometría',
               { label: 'Acción', align: 'text-right' },
             ]}
           >
@@ -219,16 +223,6 @@ export default function ClientDashboard() {
                 </td>
                 <td className="py-3 px-4">
                   <Badge variant={app.estado}>{app.estado}</Badge>
-                </td>
-                <td className="py-3 px-4 font-body-sm text-[12px]">
-                  {app.biometriaValidada ? (
-                    <span className="text-emerald-800 font-bold flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                      Validada
-                    </span>
-                  ) : (
-                    <span className="text-on-surface-variant">Pendiente</span>
-                  )}
                 </td>
                 <td className="py-3 px-4 text-right">
                   <Link to={app.applicationType === 'INVERSION' ? `/cliente/inversiones/${app.id}` : `/cliente/solicitudes/${app.id}`}>

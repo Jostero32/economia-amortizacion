@@ -18,6 +18,7 @@ const {
   InvestmentApplication,
   Document,
   AuditLog,
+  IdentityVerification,
 } = require('../../src/models');
 const TEST_USERS = require('../fixtures/users');
 
@@ -78,6 +79,7 @@ async function cleanDatabase() {
   const models = [
     AuditLog,
     Document,
+    IdentityVerification,
     CreditApplication,
     InvestmentApplication,
     AmortizationRow,

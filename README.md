@@ -148,27 +148,32 @@ con $k$ = meses. El sistema lo calcula mes a mes, redondeando a centavos, y mues
 - La frecuencia de pago y la póliza de desgravamen propia deben coincidir con la simulación; con póliza propia se exige además el documento de la póliza.
 - Edad: mayor de edad y máximo 80 años al terminar el crédito.
 - Cédula ecuatoriana con dígito verificador, teléfono celular o fijo válido y autorización de consulta al buró de crédito. En inversiones se exige la declaración de licitud de fondos.
-- Estados: Recibida → En revisión → (Documentos pendientes) → Aprobada / No aprobada. Solo se aprueba desde En revisión, con los 4 documentos validados y la biometría aprobada por el asesor (ver 4.1.1). Rechazar la solicitud o un documento exige indicar el motivo al cliente. Una solicitud resuelta no admite cambios ni documentos.
+- Estados: Recibida → En revisión → (Documentos pendientes) → Aprobada / No aprobada. Solo se aprueba desde En revisión, con los documentos validados (domicilio, ingresos y, si aplica, la póliza) y la identidad del cliente verificada (ver 4.1.1). Rechazar la solicitud o un documento exige indicar el motivo al cliente. Una solicitud resuelta no admite cambios ni documentos.
 
-### 4.1.1 Validación biométrica con reconocimiento facial
-- La cédula y la selfie deben ser imágenes (JPG, PNG o WEBP). La selfie se toma con la cámara del dispositivo (requiere HTTPS o localhost), sosteniendo la cédula, y exige la autorización expresa del cliente para tratar su dato biométrico (LOPDP); antes de enviarla se comprueba que haya un rostro visible.
-- El asesor pulsa **Comparar rostros**: el navegador descarga ambas imágenes, detecta el rostro principal de cada una (SSD MobileNet v1) y calcula un descriptor facial de 128 dimensiones (`@vladmandic/face-api`, TensorFlow.js). Las fotos no salen del sistema: no se usa ningún servicio externo.
-- Resultado según la distancia euclidiana *d* entre descriptores: **Coincide** si *d* ≤ 0,47; **Dudoso** si 0,47 < *d* ≤ 0,60 (revisión manual); **No coincide** si *d* > 0,60. El porcentaje mostrado es un nivel de coincidencia 100 / (1 + e^((d − 0,535)/0,04)), una escala para leer la distancia, no una probabilidad.
-- Los umbrales se calibraron con cédulas reales: cédula vs. rostro de la misma persona dio 0,40–0,44 y personas distintas desde 0,59 (0,47 en pares muy parecidos). La comparación es a color (en grises empeora) y reintenta con margen cuando el rostro llena la foto. Detalle en [docs/verificacion-identidad.md](docs/verificacion-identidad.md); la calibración se repite con [tools/calibracion-identidad](tools/calibracion-identidad/README.md).
-- El resultado (nivel, distancia, veredicto y fecha) se guarda en la solicitud y en la auditoría, pero **la decisión final es del asesor**: el reconocimiento no aprueba la biometría por sí solo.
-- Los modelos (~12 MB) se copian desde `node_modules` a `frontend/public/models/face-api` en `npm run dev`/`npm run build` y se sirven desde el mismo dominio.
+### 4.1.1 Verificación de identidad (eKYC)
+- Se hace **una vez por persona**: se ofrece al terminar el registro y es obligatoria antes de la primera solicitud (con la verificación en revisión ya se puede solicitar, pero el crédito o la inversión solo se aprueban con la identidad verificada). Se repite si la cédula vence o si el asesor la rechaza.
+- Pasos en `/cliente/verificacion`:
+  1. **Autorización** del tratamiento de datos personales y biométricos (LOPDP), versionada y guardada con la fecha y la IP.
+  2. **Anverso** y **reverso** de la cédula con un marco guía que se toma solo cuando la imagen está nítida (también se puede subir una foto).
+  3. **Selfie** con un óvalo guía.
+- El **servidor** decide: normaliza las fotos (orientación EXIF, recorte de la tarjeta), compara el rostro de la cédula con la selfie (`@vladmandic/face-api` con TensorFlow WASM) y aplica las reglas (`backend/src/services/identity/decisionEngine.js`). Lo que calcula el navegador solo guía la captura.
+- Resultado según la distancia *d* entre descriptores faciales: **Coincide** si *d* ≤ 0,50; **Dudoso** si *d* ≤ 0,60 (revisión del asesor); **No coincide** si *d* > 0,60 (reintentar, hasta 3 intentos). Umbrales en `backend/src/config/identity.js`, calibrados con cédulas reales ([docs/verificacion-identidad.md](docs/verificacion-identidad.md)).
+- Los casos que no se resuelven solos pasan a la cola del asesor (**Verificaciones**), con las capturas, los controles y los motivos; aprobar o rechazar queda auditado.
+- Plan completo por fases: [docs/fases-verificacion-identidad.md](docs/fases-verificacion-identidad.md). La calibración se repite con [tools/calibracion-identidad](tools/calibracion-identidad/README.md).
 
 ### 4.2 Matriz de permisos
 
 | Acción | Público | Cliente | Asesor | Admin |
 | :--- | :---: | :---: | :---: | :---: |
 | Simular y descargar el PDF de una simulación | ✓ | ✓ | ✓ | ✓ |
+| Verificar su identidad (cédula y selfie) | – | Propia | – | – |
 | Crear solicitudes y subir documentos | – | Propias | – | – |
 | Ver solicitudes, documentos y PDF de solicitudes | – | Propias | Todas | Todas |
 | Cambiar estado de solicitudes y validar documentos | – | – | ✓ | ✓ |
+| Revisar y resolver verificaciones de identidad | – | – | ✓ | ✓ |
 | Productos, tasas, cobros, institución, usuarios y auditoría | – | – | – | ✓ |
 
-Los documentos de las solicitudes se guardan en `uploads/documentos`, que no se publica como archivo estático; solo se entregan por `/api/documents/:id` con este control de acceso.
+Los documentos de las solicitudes se guardan en `uploads/documentos`, que no se publica como archivo estático; solo se entregan por `/api/documents/:id` con este control de acceso. Las capturas de la verificación de identidad van en `uploads/documentos/identidad` y solo se entregan al titular y al personal por `/api/identity/:id/archivos/:tipo`.
 
 ---
 
@@ -195,7 +200,7 @@ Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abo
 | Rol | Correo | Contraseña | Permisos |
 | :--- | :--- | :--- | :--- |
 | **ADMIN** | `admin@finanecuador.local` | `Admin123!` | Configuración total, tasas, cobros, productos, auditoría. |
-| **ASESOR** | `asesor@finanecuador.local` | `Asesor123!` | Revisión de solicitudes, documentos y validación biométrica asistida por reconocimiento facial. |
+| **ASESOR** | `asesor@finanecuador.local` | `Asesor123!` | Revisión de solicitudes, documentos y verificaciones de identidad. |
 | **CLIENTE** | `cliente@finanecuador.local` | `Cliente123!` | Solicitud formal de crédito/inversión y subida de expedientes. |
 
 *(La pantalla de Login incluye botones de carga rápida con 1 solo clic).*
@@ -206,5 +211,5 @@ Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abo
 
 - Proyecto universitario desarrollado para la materia **Ingeniería Económica**.
 - Las tasas son valores referenciales tomados de las resoluciones del **Banco Central del Ecuador a Septiembre de 2026**. Los productos marcados como *valores demostrativos* (montos, plazos y la prima del desgravamen) son ilustrativos.
-- La validación biométrica usa reconocimiento facial en el navegador como apoyo al asesor; no incluye prueba de vida (*liveness*), por lo que no reemplaza a un servicio biométrico certificado.
+- La verificación de identidad usa reconocimiento facial y lectura de la cédula en el propio servidor; no es un servicio biométrico certificado ni consulta al Registro Civil. El cliente de demostración ya tiene la identidad verificada (semilla) para probar solicitudes; para probar la verificación, registra un cliente nuevo.
 - La plataforma no otorga créditos reales ni capta recursos reales del público.

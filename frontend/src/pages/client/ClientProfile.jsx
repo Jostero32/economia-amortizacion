@@ -2,9 +2,12 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
+import IdentityStatusCard from '../../components/identity/IdentityStatusCard';
+import { useIdentityStatus } from '../../components/identity/identityStatus';
 
 export default function ClientProfile() {
   const { user } = useAuth();
+  const identity = useIdentityStatus();
 
   return (
     <div className="max-w-3xl mx-auto space-y-space-md">
@@ -15,6 +18,8 @@ export default function ClientProfile() {
           Información personal registrada en la plataforma institucional.
         </p>
       </div>
+
+      {user?.rol === 'CLIENTE' && <IdentityStatusCard status={identity.status} />}
 
       <Card>
         <div className="space-y-6">

@@ -20,8 +20,8 @@ const { isValidCedula } = require('../../backend/src/utils/identity.js');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
 
-// Deben coincidir con frontend/src/utils/faceMatch.js
-const MATCH_DISTANCE = 0.47;
+// Deben coincidir con backend/src/config/identity.js (umbrales en uso)
+const MATCH_DISTANCE = 0.5;
 const DOUBTFUL_DISTANCE = 0.6;
 
 // Modelo MRZ de tesseractMRZ (licencia BSD-3), fijado a un commit y verificado por hash

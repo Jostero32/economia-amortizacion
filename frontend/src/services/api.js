@@ -132,6 +132,27 @@ export const clientService = {
 };
 
 
+// Verificación de identidad del cliente (una vez por persona)
+const imageForm = (fields) => {
+  const body = new FormData();
+  Object.entries(fields).forEach(([name, value]) => {
+    (Array.isArray(value) ? value : [value]).filter(Boolean).forEach((file) => body.append(name, file));
+  });
+  return body;
+};
+const multipart = { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 };
+
+export const identityService = {
+  getMine: () => api.get('/identity/me'),
+  start: (consentimientoVersion) => api.post('/identity', { aceptaConsentimiento: true, consentimientoVersion }),
+  uploadFront: (id, file) => api.post(`/identity/${id}/anverso`, imageForm({ foto: file }), multipart),
+  uploadBack: (id, file) => api.post(`/identity/${id}/reverso`, imageForm({ foto: file }), multipart),
+  uploadSelfie: (id, selfie, vida = []) => api.post(`/identity/${id}/selfie`, imageForm({ selfie, vida }), multipart),
+  // Imagen con la cookie de sesión (titular o asesor)
+  getFileBlob: (id, tipo) =>
+    axios.get(`${API_BASE_URL}/identity/${id}/archivos/${tipo}`, { responseType: 'blob', withCredentials: true }).then((res) => res.data),
+};
+
 // Endpoints de Asesor y Administrador
 export const adminService = {
   // Asesor & Admin
@@ -139,7 +160,9 @@ export const adminService = {
   getApplicationById: (id) => api.get(`/admin/applications/${id}`),
   getInvestmentApplicationById: (id) => api.get(`/admin/investment-applications/${id}`),
   updateApplicationStatus: (id, data) => api.patch(`/admin/applications/${id}/status`, data),
-  recordBiometricCheck: (id, data) => api.patch(`/admin/applications/${id}/biometric`, data),
+  getIdentityVerifications: (estado) => api.get('/admin/identity-verifications', { params: estado ? { estado } : {} }),
+  getIdentityVerification: (id) => api.get(`/admin/identity-verifications/${id}`),
+  decideIdentityVerification: (id, data) => api.patch(`/admin/identity-verifications/${id}/decision`, data),
 
   getDocuments: () => api.get('/admin/documents'),
   updateDocumentStatus: (id, data) => api.patch(`/admin/documents/${id}/status`, data),

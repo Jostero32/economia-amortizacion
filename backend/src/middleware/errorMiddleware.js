@@ -8,7 +8,9 @@ function errorHandler(err, req, res, next) {
 
   if (err instanceof MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return errorResponse(res, 'El archivo excede el tamaño máximo permitido de 5 MB.', 400);
+      // Las fotos de la verificación de identidad admiten hasta 8 MB; los documentos, 5 MB
+      const limit = ['foto', 'selfie', 'vida'].includes(err.field) ? 8 : 5;
+      return errorResponse(res, `El archivo excede el tamaño máximo permitido de ${limit} MB.`, 400);
     }
     return errorResponse(res, 'No se pudo cargar el archivo. Verifica que sea un solo archivo PDF o imagen.', 400);
   }

@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const { UPLOADS_DIR, DOCUMENTS_DIR } = require('../services/storage/documentStorage');
+const { MAX_UPLOAD_BYTES } = require('../config/identity');
 
 function buildFileName(req, file, cb) {
   const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -67,5 +68,23 @@ const imageUpload = multer({
   },
 });
 
+// Fotos de la verificación de identidad: en memoria, porque se normalizan y analizan antes de guardarse
+const IDENTITY_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+const identityUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (IDENTITY_IMAGE_MIMES.includes(file.mimetype)) return cb(null, true);
+    const error = new Error('La foto debe ser una imagen JPG, PNG o WEBP.');
+    error.statusCode = 400;
+    return cb(error, false);
+  },
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    files: 6,
+  },
+});
+
 module.exports = upload;
 module.exports.imageUpload = imageUpload;
+module.exports.identityUpload = identityUpload;
+module.exports.IDENTITY_FIELDS = ['foto', 'selfie', 'vida'];

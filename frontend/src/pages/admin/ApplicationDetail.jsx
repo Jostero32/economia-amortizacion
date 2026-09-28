@@ -20,7 +20,7 @@ export default function ApplicationDetail() {
   const loadApplication = () => {
     adminService
       .getApplicationById(id)
-      .then((res) => setApplication(res.data.application))
+      .then((res) => setApplication({ ...res.data.application, identidad: res.data.identidad }))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };

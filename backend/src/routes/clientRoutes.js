@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const applicationController = require('../controllers/applicationController');
 const documentController = require('../controllers/documentController');
+const identityController = require('../controllers/identityController');
 const { authenticateToken } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/roleMiddleware');
 const upload = require('../middleware/uploadMiddleware');
+const { identityUpload } = require('../middleware/uploadMiddleware');
 const {
   validateCreditApplication,
   validateInvestmentApplication,
@@ -31,6 +33,20 @@ router.get('/investment-applications/:id/pdf', applicationController.getInvestme
 // Carga y consulta de Documentos
 router.post('/documents', clientOnly, upload.single('archivo'), documentController.uploadDocument);
 router.get('/documents/:id', documentController.getDocumentFile);
+
+// Verificación de identidad (una vez por persona; la decisión se calcula en el servidor)
+router.get('/identity/me', clientOnly, identityController.getMyVerification);
+router.post('/identity', clientOnly, identityController.startVerification);
+router.post('/identity/:id/anverso', clientOnly, identityUpload.single('foto'), identityController.uploadFront);
+router.post('/identity/:id/reverso', clientOnly, identityUpload.single('foto'), identityController.uploadBack);
+router.post(
+  '/identity/:id/selfie',
+  clientOnly,
+  identityUpload.fields([{ name: 'selfie', maxCount: 1 }, { name: 'vida', maxCount: 4 }]),
+  identityController.uploadSelfie
+);
+// Imágenes: el titular, el asesor o el administrador (se valida en el controlador)
+router.get('/identity/:id/archivos/:tipo', identityController.getFile);
 
 // Historial de Simulaciones del usuario
 router.get('/simulations/my', require('../controllers/simulationController').getMyCreditSimulations);

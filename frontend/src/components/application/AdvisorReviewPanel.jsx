@@ -4,7 +4,8 @@ import Badge from '../Badge';
 import Button from '../Button';
 import Alert from '../Alert';
 import Modal from '../Modal';
-import BiometricCheck from './BiometricCheck';
+import { Link } from 'react-router-dom';
+import IdentityBadge from '../identity/IdentityBadge';
 import {
   STATUS_LABELS,
   STATUS_TRANSITIONS,
@@ -12,17 +13,44 @@ import {
   CLOSED_STATUSES,
   REQUIRED_DOCUMENTS,
   POLICY_DOCUMENT,
+  LEGACY_DOCUMENT_LABELS,
   DOCUMENT_STATUS,
   requiredDocumentsFor,
 } from './applicationStatus';
 
-const DOCUMENT_LABELS = Object.fromEntries(
-  [...REQUIRED_DOCUMENTS, POLICY_DOCUMENT].map((doc) => [doc.tipo, doc.label])
-);
+const DOCUMENT_LABELS = {
+  ...LEGACY_DOCUMENT_LABELS,
+  ...Object.fromEntries([...REQUIRED_DOCUMENTS, POLICY_DOCUMENT].map((doc) => [doc.tipo, doc.label])),
+};
+
+/** Estado de identidad del titular: se verifica una vez por persona, no por solicitud. */
+function IdentityPanel({ identidad, legacyValidated }) {
+  const text = identidad?.verificada
+    ? 'La identidad del cliente está verificada.'
+    : identidad?.estado === 'EN_REVISION'
+      ? 'La verificación de identidad espera tu revisión: resuélvela para poder aprobar.'
+      : legacyValidated
+        ? 'Biometría validada en el flujo anterior a la verificación de identidad.'
+        : 'El cliente todavía no verificó su identidad.';
+  return (
+    <div className="flex items-start justify-between gap-3 p-3 rounded-lg bg-surface-container-low border border-surface-container-high">
+      <div className="space-y-1">
+        <strong className="block text-[13px] text-primary">Identidad del cliente</strong>
+        <IdentityBadge identidad={identidad} legacyValidated={legacyValidated} />
+        <span className="block text-[12px] text-gray-500">{text}</span>
+      </div>
+      {identidad?.id && (
+        <Link to={`/admin/verificaciones/${identidad.id}`} className="text-[12px] text-secondary hover:underline flex-shrink-0">
+          Ver verificación
+        </Link>
+      )}
+    </div>
+  );
+}
 
 /**
- * Revisión del asesor: documentos (con motivo de rechazo), validación biométrica y cambio de
- * estado limitado a las transiciones permitidas.
+ * Revisión del asesor: documentos (con motivo de rechazo), estado de identidad del cliente y cambio
+ * de estado limitado a las transiciones permitidas.
  * @param {Object} props.application
  * @param {'CREDITO'|'INVERSION'} props.tipo
  * @param {Function} props.onUpdated - Recarga la solicitud tras un cambio
@@ -33,7 +61,6 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
 
   const [estado, setEstado] = useState('');
   const [observacion, setObservacion] = useState(application.observacionAsesor || '');
-  const [biometria, setBiometria] = useState(Boolean(application.biometriaValidada));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -48,6 +75,8 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
   const requiredDocuments = requiredDocumentsFor(application);
   const missingDocuments = requiredDocuments.filter((doc) => !validatedTypes.has(doc.tipo));
   const noteRequired = STATUSES_REQUIRING_NOTE.includes(estado);
+  // Solicitudes previas a la verificación de identidad: vale la biometría que ya se validó en ellas
+  const identityOk = Boolean(application.identidad?.verificada || application.biometriaValidada);
 
   const updateDocument = async (docId, body) => {
     setError(null);
@@ -87,7 +116,6 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
         tipo,
         ...(estado ? { estado } : {}),
         observacionAsesor: observacion,
-        biometriaValidada: biometria,
       });
       setSuccess('Solicitud actualizada.');
       setEstado('');
@@ -165,7 +193,6 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
         {isClosed ? (
           <>
             <Alert type="info">La solicitud ya fue resuelta y no admite cambios.</Alert>
-            {application.biometriaResultado && <BiometricCheck application={application} tipo={tipo} readOnly />}
           </>
         ) : (
           <>
@@ -182,6 +209,9 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
                   <option key={state} value={state}>{STATUS_LABELS[state]}</option>
                 ))}
               </select>
+              {estado === 'APROBADA' && !identityOk && (
+                <p className="text-[12px] text-amber-700">La identidad del cliente todavía no está verificada.</p>
+              )}
               {estado === 'APROBADA' && missingDocuments.length > 0 && (
                 <p className="text-[12px] text-amber-700">
                   Faltan documentos validados: {missingDocuments.map((doc) => doc.label.toLowerCase()).join(', ')}.
@@ -189,25 +219,7 @@ export default function AdvisorReviewPanel({ application, tipo, onUpdated }) {
               )}
             </div>
 
-            {/* Propone la decisión según el resultado; el asesor puede cambiarla antes de guardar */}
-            <BiometricCheck
-              application={application}
-              tipo={tipo}
-              onResult={({ resultado }) => {
-                if (resultado === 'COINCIDE') setBiometria(true);
-                if (resultado === 'NO_COINCIDE') setBiometria(false);
-              }}
-            />
-
-            <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-lg bg-surface-container-low border border-surface-container-high">
-              <input type="checkbox" checked={biometria} onChange={(e) => setBiometria(e.target.checked)} className="h-4 w-4 mt-0.5 accent-secondary" />
-              <span className="text-[13px]">
-                <strong className="text-primary">Validación biométrica aprobada</strong>
-                <span className="block text-[12px] text-gray-500">
-                  Confirmo que la selfie corresponde a la persona de la cédula (apoyado en el reconocimiento facial).
-                </span>
-              </span>
-            </label>
+            <IdentityPanel identidad={application.identidad} legacyValidated={application.biometriaValidada} />
 
             <div className="space-y-1.5">
               <label htmlFor="observacion-input" className="block text-[13px] font-medium text-primary">

@@ -30,6 +30,7 @@ import ClientApplicationDetail from '../pages/client/ClientApplicationDetail';
 import ClientInvestmentApplicationDetail from '../pages/client/ClientInvestmentApplicationDetail';
 import ClientSimulations from '../pages/client/ClientSimulations';
 import ClientProfile from '../pages/client/ClientProfile';
+import ClientIdentityVerification from '../pages/client/ClientIdentityVerification';
 
 // Admin Pages
 import AdminDashboard from '../pages/admin/AdminDashboard';
@@ -45,6 +46,8 @@ import InvestmentApplicationDetail from '../pages/admin/InvestmentApplicationDet
 import DocumentsList from '../pages/admin/DocumentsList';
 import UsersList from '../pages/admin/UsersList';
 import AuditLogs from '../pages/admin/AuditLogs';
+import IdentityVerificationsList from '../pages/admin/IdentityVerificationsList';
+import IdentityVerificationDetail from '../pages/admin/IdentityVerificationDetail';
 
 export default function AppRouter() {
   return (
@@ -95,6 +98,7 @@ export default function AppRouter() {
         <Route path="inversiones/:id" element={<ClientInvestmentApplicationDetail />} />
         <Route path="simulaciones" element={<ClientSimulations />} />
         <Route path="perfil" element={<ClientProfile />} />
+        <Route path="verificacion" element={<ClientIdentityVerification />} />
       </Route>
 
       {/* 3. RUTAS PROTEGIDAS DE ADMINISTRADOR / ASESOR */}
@@ -110,6 +114,8 @@ export default function AppRouter() {
         <Route path="solicitudes" element={<ApplicationsList />} />
         <Route path="solicitudes/:id" element={<ApplicationDetail />} />
         <Route path="solicitudes/inversion/:id" element={<InvestmentApplicationDetail />} />
+        <Route path="verificaciones" element={<IdentityVerificationsList />} />
+        <Route path="verificaciones/:id" element={<IdentityVerificationDetail />} />
         <Route path="documentos" element={<DocumentsList />} />
         <Route path="usuarios" element={<UsersList />} />
 

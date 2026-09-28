@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { clientService, publicService } from '../../services/api';
 import Card from '../../components/Card';
@@ -14,6 +14,8 @@ import { formatMoney, formatPercent, formatDate } from '../../utils/format';
 import { todayISO } from '../../utils/dates';
 import { rules, ageFrom } from '../../utils/validation';
 import { getFrequency } from '../../utils/frequencies';
+import IdentityStatusCard from '../../components/identity/IdentityStatusCard';
+import { useIdentityStatus } from '../../components/identity/identityStatus';
 
 const MIN_AGE = 18;
 const MAX_DEBT_TO_INCOME = 40; // %
@@ -135,6 +137,8 @@ const withoutEmpty = (errors) => Object.fromEntries(Object.entries(errors).filte
 export default function ClientApplications() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const identity = useIdentityStatus();
   const [searchParams] = useSearchParams();
   const simulationId = searchParams.get('simulationId');
   const invSimulationId = searchParams.get('invSimulationId');
@@ -213,7 +217,9 @@ export default function ClientApplications() {
 
   const handleServerError = (err) => {
     setError(err.message || 'No se pudo enviar la solicitud.');
-    if (err.errors && !Array.isArray(err.errors)) setServerErrors(err.errors);
+    // Sin identidad verificada: se actualiza el estado para mostrar cómo verificarla
+    if (err.errors?.identidad) identity.reload();
+    else if (err.errors && !Array.isArray(err.errors)) setServerErrors(err.errors);
   };
 
   const submitCreditApplication = async (event) => {
@@ -290,7 +296,12 @@ export default function ClientApplications() {
     }
   };
 
-  if (loading) return <LoadingState message="Cargando tus solicitudes..." />;
+  if (loading || identity.loading) return <LoadingState message="Cargando tus solicitudes..." />;
+
+  // Solicitar exige la identidad verificada (o en revisión); después de verificarla se vuelve aquí
+  const wantsToApply = Boolean((simulationId && creditSimulation) || (invSimulationId && investmentSimulation));
+  const needsIdentity = wantsToApply && identity.status && !identity.status.puedeSolicitar;
+  const identityInReview = wantsToApply && identity.status?.verification?.estado === 'EN_REVISION';
 
   const personalFields = (errors) => (
     <>
@@ -330,7 +341,11 @@ export default function ClientApplications() {
 
       {error && <Alert type="error" title="No pudimos enviar tu solicitud">{error}</Alert>}
 
-      {simulationId && creditSimulation && (
+      {(needsIdentity || identityInReview) && (
+        <IdentityStatusCard status={identity.status} volver={`${location.pathname}${location.search}`} />
+      )}
+
+      {!needsIdentity && simulationId && creditSimulation && (
         <Card title="Solicitar crédito" subtitle="Completa tus datos para que un asesor revise tu solicitud" iconName="assignment" className="border-2 border-secondary/30">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-surface-container-low p-4 rounded-lg mb-4 text-[13px]">
             <div><span className="block text-on-surface-variant">Producto</span><strong>{creditSimulation.creditType?.nombre}</strong></div>
@@ -392,7 +407,7 @@ export default function ClientApplications() {
         </Card>
       )}
 
-      {invSimulationId && investmentSimulation && (
+      {!needsIdentity && invSimulationId && investmentSimulation && (
         <Card title="Solicitar inversión" subtitle="Completa tus datos para abrir tu depósito a plazo" iconName="savings" className="border-2 border-secondary/30">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-surface-container-low p-4 rounded-lg mb-4 text-[13px]">
             <div><span className="block text-on-surface-variant">Producto</span><strong>{investmentSimulation.product?.nombre}</strong></div>

@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import Table from '../../components/Table';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
+import IdentityBadge from '../../components/identity/IdentityBadge';
 import Alert from '../../components/Alert';
 import { LoadingState } from '../../components/Spinner';
 
@@ -48,9 +49,7 @@ function ApplicationsTable({ applications, type, formatUSD }) {
           </td>
           <td className="py-3 px-4"><Badge variant={application.estado}>{application.estado}</Badge></td>
           <td className="py-3 px-4 text-[12px]">
-            <span className={application.biometriaValidada ? 'text-emerald-800 font-bold' : 'text-amber-800 font-bold'}>
-              {application.biometriaValidada ? 'Validada' : 'Por validar'}
-            </span>
+            <IdentityBadge identidad={application.identidad} legacyValidated={application.biometriaValidada} />
           </td>
           <td className="py-3 px-4 text-right">
             <Link to={isInvestment ? `/admin/solicitudes/inversion/${application.id}` : `/admin/solicitudes/${application.id}`}>
@@ -101,7 +100,7 @@ export default function ApplicationsList() {
           <Badge variant="bce" iconName="assignment">Bandeja de entrada</Badge>
           <h1 className="font-headline-lg text-[24px] sm:text-[28px] text-primary font-bold mt-1">Gestión de solicitudes</h1>
           <p className="font-body-sm text-[13px] text-on-surface-variant">
-            Revisión integral de créditos e inversiones, documentos y biometría (reconocimiento facial).
+            Revisión integral de créditos e inversiones, documentos e identidad de los clientes.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

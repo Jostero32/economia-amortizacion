@@ -5,6 +5,7 @@ const { runAdditiveMigrations } = require('./config/schemaMigrations');
 const { seedDatabase } = require('./seed/seed');
 const { Document } = require('./models');
 const { moveLegacyDocuments } = require('./services/storage/documentStorage');
+const { warmup: warmupFaceModels } = require('./services/identity/faceService');
 
 async function startServer() {
   try {
@@ -31,7 +32,12 @@ async function startServer() {
       console.log(`[Archivos]: ${movedDocuments} documento(s) movido(s) a la carpeta privada.`);
     }
 
-    // 5. Iniciar servidor Express
+    // 5. Precargar el reconocimiento facial sin bloquear el arranque (la primera verificación no espera)
+    warmupFaceModels()
+      .then(() => console.log('[Identidad]: Modelos de reconocimiento facial cargados.'))
+      .catch((error) => console.error('[Identidad]: No se pudieron cargar los modelos faciales:', error.message));
+
+    // 6. Iniciar servidor Express
     app.listen(config.PORT, () => {
       console.log(`====================================================`);
       console.log(` FinanEcuador Demo Backend en línea`);
