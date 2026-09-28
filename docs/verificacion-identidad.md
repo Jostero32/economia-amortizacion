@@ -119,7 +119,8 @@ El sexo y la nacionalidad tampoco están cubiertos por el dígito compuesto.
 
 - **No tiene MRZ.** Su foto es a color. El número (NUI) del anverso se leyó por OCR con el dígito
   verificador válido e igual al de la cédula electrónica de la misma persona; la fecha no se pudo
-  leer. Estas cédulas pasan al asesor, con el NUI leído como ayuda.
+  leer. Estas cédulas pasan al asesor; la lectura OCR del NUI se probó en la calibración, pero su
+  integración como ayuda en la aplicación queda como trabajo futuro.
 - **Código de barras vertical (electrónica):** CODE_128 con el número de documento, que la MRZ ya
   trae. No aporta.
 - **QR (electrónica) y código de barras (antigua):** no se pudieron decodificar a la resolución de las

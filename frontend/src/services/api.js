@@ -165,6 +165,7 @@ export const adminService = {
   getInvestmentApplicationById: (id) => api.get(`/admin/investment-applications/${id}`),
   updateApplicationStatus: (id, data) => api.patch(`/admin/applications/${id}/status`, data),
   getIdentityVerifications: (estado) => api.get('/admin/identity-verifications', { params: estado ? { estado } : {} }),
+  getIdentityMetrics: () => api.get('/admin/identity-verifications/metrics'),
   getIdentityVerification: (id) => api.get(`/admin/identity-verifications/${id}`),
   decideIdentityVerification: (id, data) => api.patch(`/admin/identity-verifications/${id}/decision`, data),
 

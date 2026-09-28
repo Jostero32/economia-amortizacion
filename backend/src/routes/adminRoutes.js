@@ -42,6 +42,7 @@ router.patch('/documents/:id/status', advisorAuth, documentController.updateDocu
 
 // Verificaciones de identidad
 router.get('/identity-verifications', advisorAuth, identityController.listVerifications);
+router.get('/identity-verifications/metrics', advisorAuth, identityController.getMetrics);
 router.get('/identity-verifications/:id', advisorAuth, identityController.getVerification);
 router.patch('/identity-verifications/:id/decision', advisorAuth, identityController.decideVerification);
 

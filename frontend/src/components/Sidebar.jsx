@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ mode = 'client' }) {
   const { user, isAdmin } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const clientLinks = [
     { to: '/cliente', label: 'Mi Resumen', iconName: 'dashboard', end: true },
@@ -34,13 +35,13 @@ export default function Sidebar({ mode = 'client' }) {
   const links = mode === 'admin' ? adminLinks : clientLinks;
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-100 min-h-[calc(100vh-5rem)] p-4 flex flex-col flex-shrink-0">
+    <aside className="w-full md:w-64 bg-white border-b md:border-r border-gray-100 md:min-h-[calc(100vh-5rem)] p-3 md:p-4 flex flex-col flex-shrink-0">
       {/* User Session Box */}
-      <div className="px-3.5 py-2.5 mb-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center gap-3">
+      <div className="px-3.5 py-2.5 md:mb-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-[13px] flex-shrink-0">
           {user?.nombre ? user.nombre.charAt(0).toUpperCase() : 'U'}
         </div>
-        <div className="overflow-hidden">
+        <div className="overflow-hidden flex-1">
           <div className="font-semibold text-[13px] text-primary truncate leading-tight">
             {user?.nombre || 'Usuario'}
           </div>
@@ -48,10 +49,14 @@ export default function Sidebar({ mode = 'client' }) {
             {user?.rol || 'CLIENTE'}
           </div>
         </div>
+        <button type="button" className="md:hidden rounded px-2 py-1 text-[13px] text-secondary font-semibold"
+          aria-expanded={mobileOpen} aria-controls={`sidebar-nav-${mode}`} onClick={() => setMobileOpen((open) => !open)}>
+          {mobileOpen ? 'Cerrar menú' : 'Menú'}
+        </button>
       </div>
 
       {/* Navigation list */}
-      <nav className="space-y-1 flex-1">
+      <nav id={`sidebar-nav-${mode}`} className={`${mobileOpen ? 'block' : 'hidden'} md:block space-y-1 flex-1 mt-3 md:mt-0`}>
         {links.map((link) => {
           if (link.role === 'ADMIN' && !isAdmin) return null;
 
@@ -60,6 +65,7 @@ export default function Sidebar({ mode = 'client' }) {
               key={link.to}
               to={link.to}
               end={link.end}
+              onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
                   isActive

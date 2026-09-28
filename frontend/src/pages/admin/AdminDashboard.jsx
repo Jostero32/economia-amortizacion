@@ -6,6 +6,7 @@ import Table from '../../components/Table';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import IdentityBadge from '../../components/identity/IdentityBadge';
+import IdentityMetricsCard from '../../components/identity/IdentityMetricsCard';
 import { LoadingState } from '../../components/Spinner';
 
 export default function AdminDashboard() {
@@ -158,6 +159,8 @@ export default function AdminDashboard() {
           </span>
         </Card>
       </div>
+
+      <IdentityMetricsCard />
 
       {/* Solicitudes para Asesor */}
       <Card

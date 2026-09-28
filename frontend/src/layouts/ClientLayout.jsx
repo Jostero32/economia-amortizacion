@@ -8,9 +8,9 @@ export default function ClientLayout() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f9fc]">
       <Navbar />
-      <div className="flex-1 pt-20 max-w-[1440px] w-full mx-auto flex">
+      <div className="flex-1 pt-20 max-w-[1440px] w-full mx-auto flex flex-col md:flex-row">
         <Sidebar mode="client" />
-        <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
+        <main className="flex-1 min-w-0 p-4 sm:p-8 overflow-y-auto">
           <Outlet />
         </main>
       </div>

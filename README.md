@@ -163,6 +163,7 @@ con $k$ = meses. El sistema lo calcula mes a mes, redondeando a centavos, y mues
 - La aprobación automática también exige **prueba de vida**: el servidor comprueba el movimiento y que cada fotograma corresponda a la persona de la selfie. Sin cámara, subir una foto envía el caso al asesor. Un movimiento fallido permite reintentar; al tercer fallo pasa a revisión. Los fotogramas quedan visibles para el asesor junto con sus resultados.
 - Con la identidad aprobada, las solicitudes toman la cédula y la fecha de nacimiento verificadas; el formulario las muestra bloqueadas y el servidor las aplica aunque se envíen otros valores.
 - Los casos que no se resuelven solos pasan a la cola del asesor (**Verificaciones**), con las capturas, los controles y los motivos; aprobar o rechazar queda auditado.
+- El panel del asesor y del administrador muestra verificaciones por estado, porcentaje de aprobación automática sobre las aprobadas, tipos de cédula, cinco motivos frecuentes, tiempo promedio hasta la decisión del asesor y distancias faciales de las aprobadas. Las métricas cuentan verificaciones, incluidos reintentos en registros nuevos y la cuenta de demostración.
 - Plan completo por fases: [docs/fases-verificacion-identidad.md](docs/fases-verificacion-identidad.md). La calibración se repite con [tools/calibracion-identidad](tools/calibracion-identidad/README.md).
 
 ### 4.2 Matriz de permisos
@@ -200,6 +201,19 @@ Cobertura: motor de amortización (francés y alemán), frecuencias de pago, abo
 Identidad: consentimiento, capturas privadas, comparación facial real con WASM, lectura OCR de una MRZ sintética, comparación de nombres y datos, aprobación automática, revisión del asesor e integración con solicitudes. Las fotos de calibración reales se mantienen fuera del repositorio.
 
 Prueba de vida: geometría con puntos sintéticos, identidad y orden de los fotogramas, ausencia de cámara, falta de movimiento, otra persona, intentos agotados y permisos de acceso. La validación de movimientos con una persona frente a un celular por HTTPS sigue pendiente; los recorridos automatizados no la sustituyen.
+
+Validación al cierre de las fases 2–4: **320 pruebas en 25 suites**, build del frontend y recorridos de navegador correctos. Las métricas incluyen pruebas de permisos, estados, porcentajes, promedios, motivos y límites de los intervalos.
+
+Comprobación de dependencias de identidad en Docker (desde la raíz del repositorio, con una fixture sintética montada en solo lectura):
+
+```bash
+docker build -t finanecuador-backend ./backend
+docker run --rm \
+  --mount "type=bind,source=$(pwd)/backend/tests/fixtures/mrz-sintetica.jpg,target=/fixtures/mrz-sintetica.jpg,readonly" \
+  finanecuador-backend node scripts/check-identity-runtime.js /fixtures/mrz-sintetica.jpg
+```
+
+En PowerShell, usa `${PWD}` en lugar de `$(pwd)` para la ruta del montaje. La comprobación detecta un rostro de ejemplo del paquete y lee la MRZ sintética con consenso en `node:20-alpine`. `.dockerignore` excluye las capturas de `uploads`, los tests y los reportes de la imagen.
 
 ---
 

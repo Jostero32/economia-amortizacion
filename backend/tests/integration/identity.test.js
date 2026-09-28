@@ -22,7 +22,7 @@ const app = require('../../src/app');
 const faceService = require('../../src/services/identity/faceService');
 const mrzService = require('../../src/services/identity/mrzService');
 const { CONSENT_VERSION } = require('../../src/config/identity');
-const { CreditType, Document, IdentityVerification, User } = require('../../src/models');
+const { AuditLog, CreditType, Document, IdentityVerification, User } = require('../../src/models');
 const { initTestDatabase, seedCompleteData, generateTestToken } = require('../helpers/dbSetup');
 const { face } = require('../helpers/livenessFixtures');
 
@@ -312,6 +312,28 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
   });
 
   describe('decisión del asesor', () => {
+    test('consentimiento, capturas, evaluación y decisión quedan auditados', async () => {
+      const client = await newClient();
+      const { id } = await verify(client, 0.55);
+      const res = await request(app).patch(`/api/admin/identity-verifications/${id}/decision`)
+        .set(auth(advisorToken)).send({ estado: 'APROBADA' });
+      expect(res.status).toBe(200);
+      const logs = await AuditLog.findAll({ where: { entidadId: id }, attributes: ['accion'] });
+      expect(logs.map((log) => log.accion)).toEqual(expect.arrayContaining([
+        'CONSENTIMIENTO_BIOMETRICO', 'CAPTURA_IDENTIDAD', 'VERIFICACION_IDENTIDAD', 'REVISION_IDENTIDAD',
+      ]));
+    });
+
+    test('un cliente no puede capturar ni consultar el detalle de la verificación de otra persona', async () => {
+      const owner = await newClient();
+      const other = await newClient();
+      const { id } = (await start(owner.token)).body.data.verification;
+      expect((await upload(other.token, id, 'anverso')).status).toBe(404);
+      expect((await sendSelfie(other.token, id, 2)).status).toBe(404);
+      expect((await request(app).get(`/api/admin/identity-verifications/${id}`).set(auth(other.token))).status).toBe(403);
+      expect(faceService.detectMainFace).not.toHaveBeenCalled();
+    });
+
     test('la cola muestra las verificaciones en revisión y solo el personal la ve', async () => {
       const client = await newClient();
       const { id } = await verify(client, 0.55);

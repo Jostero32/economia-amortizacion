@@ -306,6 +306,24 @@ todo coincide.
 2. **Documentación:** actualizar este plan con el estado final, el README y los límites conocidos.
 3. **Limpieza:** revisar los textos, los permisos y la auditoría de extremo a extremo.
 
+Implementación: `GET /api/admin/identity-verifications/metrics`, protegido para asesor y administrador
+y registrado antes de la ruta `/:id`. Devuelve datos agregados; no devuelve titulares ni rutas de
+capturas. Cuenta registros de verificación, incluida la semilla; los tipos todavía desconocidos no
+entran en los totales por tipo. El porcentaje usa aprobadas como denominador (0 si no hay).
+
+El promedio solo incluye registros con revisor y fecha de revisión, desde `createdAt`; sin revisiones
+devuelve `null`. Los motivos se cuentan una vez por verificación pendiente o rechazada y se muestran
+los cinco más frecuentes. El histograma usa [0; 0,30], (0,30; 0,40], (0,40; 0,45], (0,45; 0,50],
+(0,50; 0,55] y (0,55; 0,60]; omite distancias ausentes y fuera del rango.
+
+El panel carga estas métricas de forma independiente, con aviso y reintento si falla la consulta.
+El menú lateral se pliega en celular, tanto para el cliente como para el asesor, para que el asistente
+y las métricas dispongan del ancho de la pantalla.
+La imagen `finanecuador-backend` se construyó sobre `node:20-alpine` y pasó
+`scripts/check-identity-runtime.js`: sharp, rostro real de ejemplo con TensorFlow WASM y OCR con
+consenso de la MRZ sintética montada en solo lectura. Se comprobó que la imagen no contiene tests
+ni capturas de usuarios. Los comandos reproducibles están en el README.
+
 ## Límites conocidos
 
 - No es un motor biométrico certificado ni consulta al Registro Civil.
@@ -314,7 +332,19 @@ todo coincide.
   herramienta de la fase 0.
 - Una webcam de laptop (enfoque fijo) suele dar un reverso poco nítido. El celular funciona mejor.
 
+Trabajo futuro opcional: limitar intentos por minuto, implementar la eliminación de capturas a
+pedido del titular, leer el NUI de cédulas antiguas por OCR y ofrecer continuación en el celular por QR.
+La validación presencial de la fase 3 sigue pendiente: no se reemplaza por la prueba de interfaz ni
+por los puntos faciales sintéticos.
+
 ## Estado
+
+Validación final (28/09/2026): **320 pruebas en 25 suites**, build del frontend e imagen Docker
+correctos. Panel probado en escritorio y a 390 px sin desborde, incluyendo recuperación visible ante
+fallo de la consulta de métricas. La auditoría cubre consentimiento, capturas, evaluación y decisión;
+las pruebas verifican que un cliente no puede consultar ni modificar verificaciones ajenas. No hay
+referencias a los componentes retirados `BiometricCheck`, `SelfieCamera` ni al campo `biometriaResultado`
+en el código de la aplicación.
 
 Validación de la fase 3: **313 pruebas en 24 suites** y build del frontend correctos. La prueba de
 cámara denegada en Chrome envió una selfie real sin fotogramas y obtuvo `EN_REVISION`, con `VIDA`
@@ -332,5 +362,5 @@ externas al repositorio.
 | 0 | Hecha | `751e914` |
 | 1 | Hecha | `cdbbb3e` |
 | 2 | Hecha | `6dc3abe` |
-| 3 | Implementada y probada automáticamente; validación presencial pendiente | Commit «Exigir dos movimientos para verificar la prueba de vida (fase 3)» |
-| 4 | Pendiente | |
+| 3 | Implementada y probada automáticamente; validación presencial pendiente | `7b78429` |
+| 4 | Hecha | Commit «Mostrar métricas de identidad y verificar el entorno Docker (fase 4)» |

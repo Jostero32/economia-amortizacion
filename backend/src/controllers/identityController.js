@@ -19,6 +19,7 @@ const { identityStatus } = require('../services/identity/identityStatus');
 const { readMrz } = require('../services/identity/mrzService');
 const { dataControls } = require('../services/identity/dataChecks');
 const { generateChallenges, evaluateLiveness } = require('../services/identity/livenessService');
+const { identityMetrics } = require('../services/identity/identityMetrics');
 const { todayISO } = require('../utils/dates');
 
 const STATES = ['EN_CURSO', 'EN_REVISION', 'APROBADA', 'RECHAZADA'];
@@ -478,6 +479,19 @@ async function listVerifications(req, res, next) {
   }
 }
 
+/** Métricas agregadas de identidad para el panel del asesor y del administrador. */
+async function getMetrics(req, res, next) {
+  try {
+    const verifications = await IdentityVerification.findAll({
+      attributes: ['estado', 'aprobacionAutomatica', 'tipoCedula', 'motivos', 'revisadoPor', 'fechaRevision', 'createdAt', 'rostroDistancia'],
+      raw: true,
+    });
+    return successResponse(res, identityMetrics(verifications));
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getVerification(req, res, next) {
   try {
     const verification = await findById(req.params.id, {
@@ -565,6 +579,7 @@ module.exports = {
   uploadSelfie,
   getFile,
   listVerifications,
+  getMetrics,
   getVerification,
   decideVerification,
 };
