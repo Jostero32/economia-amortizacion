@@ -12,6 +12,7 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorMiddleware'
 const { UPLOADS_DIR } = require('./services/storage/documentStorage');
 
 const app = express();
+const frontendOrigin = new URL(config.FRONTEND_URL).origin;
 
 // Seguridad con Helmet
 app.use(
@@ -25,8 +26,18 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permitir solicitudes del FRONTEND_URL y orígenes locales en desarrollo o sin origen (como Postman/curl)
-      if (!origin || origin === config.FRONTEND_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      // Comparar el origen real; un dominio que solo contenga "localhost" no es local.
+      let localDevelopment = false;
+      if (origin && config.NODE_ENV !== 'production') {
+        try {
+          const url = new URL(origin);
+          localDevelopment = ['http:', 'https:'].includes(url.protocol)
+            && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+        } catch {
+          // Un origen mal formado no puede usar cookies de la aplicación.
+        }
+      }
+      if (!origin || origin === frontendOrigin || localDevelopment) {
         callback(null, true);
       } else {
         const corsError = new Error('Origen no permitido para acceder a la API.');

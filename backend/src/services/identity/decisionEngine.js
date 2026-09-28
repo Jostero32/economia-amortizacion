@@ -59,7 +59,7 @@ function decide({ controles, intentos, maxIntentos, requeridos = AUTO_APPROVAL_C
   }
 
   const byCode = new Map(controles.map((c) => [c.codigo, c]));
-  const reviews = controles.filter((c) => c.ok === false || c.ok === null).map((c) => c.detalle);
+  const reviews = controles.filter((c) => c.ok !== true).map((c) => c.detalle);
   const missing = requeridos.filter((code) => !byCode.has(code));
   if (!reviews.length && !missing.length) {
     return { resultado: 'APROBADA', aprobacionAutomatica: true, motivos: [] };

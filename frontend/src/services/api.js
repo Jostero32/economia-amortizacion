@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+// En producción, la API comparte dominio y prefijo con la SPA a través de Nginx.
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  || (import.meta.env.PROD ? `${import.meta.env.BASE_URL}api` : 'http://localhost:8080/api');
 
 export const resolveApiAssetUrl = (assetPath) => {
   if (!assetPath || /^(https?:|data:|blob:)/i.test(assetPath)) return assetPath;

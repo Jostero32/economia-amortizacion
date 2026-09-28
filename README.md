@@ -45,7 +45,7 @@ El proyecto está organizado en dos carpetas totalmente autónomas preparadas pa
 │   │   └── index.css        # Tailwind directives
 │   ├── .gitignore           # Ignora node_modules, dist, .env, logs
 │   ├── Dockerfile
-│   ├── docker-compose.yml   # Contiene: frontend SPA React/Vite (puerto 5173)
+│   ├── docker-compose.yml   # Desarrollo aislado: Nginx 80 publicado en localhost:5173
 │   ├── .env.example
 │   ├── vite.config.js
 │   ├── tailwind.config.js
@@ -56,22 +56,48 @@ El proyecto está organizado en dos carpetas totalmente autónomas preparadas pa
 
 ---
 
-## 2. Cómo Ejecutar con Docker
+## 2. Cómo desplegar con Docker y Dokploy
 
-Desde el directorio principal:
+El `docker-compose.yml` de la raíz usa puertos internos (`expose`), sin publicar puertos en el host.
+Varias aplicaciones pueden usar los mismos puertos internos sin ocupar los puertos del servidor.
+Nginx atiende la SPA y reenvía `/api/` a Express dentro de la red de Compose.
 
-```bash
-docker compose up --build
-```
+| Servicio | Puerto interno | Acceso |
+| --- | --- | --- |
+| `frontend` | **80** | Dominio HTTPS de Dokploy |
+| `backend` | **8080** | Nginx → `backend:8080` |
+| `db` | **5432** | Backend → `db:5432` |
 
-Esto levantará:
-- `db`: PostgreSQL 16 (con `healthcheck` y volumen persistente `postgres_data`).
-- `backend`: Node.js Express en el puerto `8080` (con volumen persistente `uploads_data`).
-- `frontend`: SPA React/Vite en el puerto `5173`.
-- Se crearán las tablas faltantes, se ejecutarán migraciones aditivas seguras y se cargará la semilla inicial.
+En Dokploy, despliega el Compose de la raíz y dirige el dominio al servicio **`frontend`, puerto 80**.
+Si usas un prefijo público, configura la misma ruta en `VITE_BASE_PATH` (por ejemplo,
+`/economia/simulador/`). Nginx admite que el proxy conserve o quite ese prefijo. El navegador pide
+la API bajo ese mismo dominio y prefijo; no hace falta publicar otro puerto para el backend.
 
-Verificación de salud: [http://localhost:8080/api/health](http://localhost:8080/api/health)
-Abrir en el navegador: [http://localhost:5173](http://localhost:5173)
+Variables de entorno del despliegue:
+
+| Variable | Valor |
+| --- | --- |
+| `POSTGRES_PASSWORD` | Obligatoria: contraseña de PostgreSQL |
+| `JWT_SECRET` | Obligatoria: secreto propio para firmar las sesiones |
+| `FRONTEND_URL` | Obligatoria: origen público, por ejemplo `https://finanzas.example.com` |
+| `POSTGRES_DB` / `POSTGRES_USER` | Por defecto `finanecuador` / `postgres`; conserva los valores de la base existente |
+| `NODE_ENV` | Por defecto `production` (sesiones con cookie segura; requiere HTTPS) |
+| `VITE_BASE_PATH` | `/` por defecto, o el prefijo público del sitio |
+| `VITE_API_URL` | Vacía por defecto: API del mismo dominio y prefijo. Configúrala solo si usas una API pública separada |
+
+`BACKEND_PORT` y `FRONTEND_PORT` ya no se utilizan. El puerto interno de Nginx es **80**, no 8088
+ni 5173. `VITE_*` se incorpora al compilar: cambiar esas variables requiere reconstruir el frontend.
+Nginx admite hasta 50 MB por petición para las capturas; el backend conserva su límite de 8 MB por
+imagen. Si el proxy externo aplica un límite menor, ajústalo para admitir esas peticiones.
+
+El backend espera a PostgreSQL; Nginx espera al estado saludable del backend. Los volúmenes
+`postgres_data` y `uploads_data` persisten la base y las capturas. Al iniciar se crean las tablas
+faltantes, se aplican migraciones aditivas y se carga la semilla.
+
+Con las variables configuradas, `docker compose up -d --build` levanta los servicios internos.
+La salud se consulta en `https://TU_DOMINIO/api/health` (o bajo el prefijo público).
+Para desarrollo aislado, los Compose de `backend/` y `frontend/` sí publican puertos locales;
+el frontend aislado sirve Nginx en `http://localhost:5173` y usa la API local en el puerto 8080.
 
 ---
 
