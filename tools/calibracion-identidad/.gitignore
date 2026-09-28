@@ -1,0 +1,4 @@
+node_modules/
+# Modelo MRZ descargado y caché de Tesseract
+modelos/
+cache/

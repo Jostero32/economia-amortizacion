@@ -1,0 +1,18 @@
+{
+  "name": "finanecuador-calibracion-identidad",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Calibra los umbrales de la verificación de identidad (rostro y MRZ) con cédulas reales guardadas fuera del repositorio",
+  "type": "module",
+  "scripts": {
+    "calibrar": "node calibrar.mjs"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0",
+    "@vladmandic/face-api": "1.7.15",
+    "mrz": "^5.0.2",
+    "sharp": "^0.35.5",
+    "tesseract.js": "^7.0.0"
+  }
+}
