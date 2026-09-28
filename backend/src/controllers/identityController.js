@@ -8,6 +8,8 @@ const {
   FACE_MATCH_DISTANCE,
   MAX_ATTEMPTS,
   MIN_BACK_SHARPNESS,
+  YAW_DELTA,
+  SMILE_DELTA,
 } = require('../config/identity');
 const { normalizeImage, cropCard, sharpness } = require('../services/identity/imageService');
 const { detectMainFace, compareFaces } = require('../services/identity/faceService');
@@ -16,6 +18,7 @@ const { decide, storedState } = require('../services/identity/decisionEngine');
 const { identityStatus } = require('../services/identity/identityStatus');
 const { readMrz } = require('../services/identity/mrzService');
 const { dataControls } = require('../services/identity/dataChecks');
+const { generateChallenges, evaluateLiveness } = require('../services/identity/livenessService');
 const { todayISO } = require('../utils/dates');
 
 const STATES = ['EN_CURSO', 'EN_REVISION', 'APROBADA', 'RECHAZADA'];
@@ -40,6 +43,8 @@ function clientView(verification) {
     controles: (v.controles || []).map(({ codigo, ok, detalle }) => ({ codigo, ok, detalle })),
     rostro: v.rostroResultado ? { resultado: v.rostroResultado, nivel: Number(v.rostroNivel) } : null,
     tipoCedula: v.tipoCedula,
+    retos: v.vida?.retos || [],
+    umbralesVida: { giro: YAW_DELTA, sonrisa: SMILE_DELTA },
     capturas: { anverso: Boolean(v.anversoRuta), reverso: Boolean(v.reversoRuta), selfie: Boolean(v.selfieRuta) },
     fechaVerificacion: v.fechaVerificacion,
     vigenteHasta: v.vigenteHasta,
@@ -158,6 +163,8 @@ async function startVerification(req, res, next) {
       consentimientoVersion,
       consentimientoFecha: new Date(),
       consentimientoIp: clientIp(req),
+      vida: { retos: generateChallenges(), generadosEn: new Date() },
+      vidaRutas: [],
     };
     const verification = latest?.estado === 'EN_CURSO'
       ? await latest.update(consent)
@@ -324,6 +331,25 @@ async function uploadSelfie(req, res, next) {
     const cedulaFace = anverso ? await detectMainFace(anverso) : null;
     const selfieFace = await detectMainFace(selfie);
     const { controles: rostro, comparison } = faceControls(cedulaFace, selfieFace);
+    const vidaRutas = [];
+    const frameFaces = [];
+    for (const [index, file] of (req.files.vida || []).entries()) {
+      const { buffer } = await normalizeImage(file.buffer);
+      vidaRutas.push(await saveImage(verification.id, `vida-${index + 1}`, buffer));
+      frameFaces.push(await detectMainFace(buffer));
+    }
+    const retos = verification.vida?.retos || [];
+    const evaluated = vidaRutas.length ? evaluateLiveness({ retos, selfieFace, frameFaces }) : { superada: null, resultados: [] };
+    const vida = { retos, generadosEn: verification.vida?.generadosEn, ...evaluated };
+    const vidaControl = {
+      codigo: 'VIDA',
+      ok: vida.superada,
+      detalle: !vidaRutas.length
+        ? 'No se realizó la prueba de vida: un asesor revisará tu verificación.'
+        : vida.superada ? 'Comprobamos los dos movimientos de tu prueba de vida.'
+          : vida.resultados.filter((r) => !r.ok).map((r) => r.detalle).join(' '),
+      siFalla: vidaRutas.length ? 'REINTENTO' : 'REVISION',
+    };
     const datos = verification.datosMrz;
     const controles = [
       ...rostro,
@@ -335,6 +361,7 @@ async function uploadSelfie(req, res, next) {
         cedulaEnOtraCuenta: await cedulaEnOtraCuenta(datos?.nui, req.user.id),
         today: todayISO(),
       }),
+      vidaControl,
     ];
 
     const intentos = verification.intentos + 1;
@@ -343,6 +370,8 @@ async function uploadSelfie(req, res, next) {
 
     await verification.update({
       selfieRuta,
+      vidaRutas,
+      vida,
       intentos,
       rostroDistancia: comparison?.distancia ?? null,
       rostroNivel: comparison?.nivel ?? null,
@@ -356,6 +385,13 @@ async function uploadSelfie(req, res, next) {
     });
     if (aprobada) await adoptCedula(verification);
 
+    await logAudit({
+      req,
+      accion: 'CAPTURA_IDENTIDAD',
+      entidad: 'IdentityVerification',
+      entidadId: verification.id,
+      detalles: { tipo: 'SELFIE', capturasVida: vidaRutas.length },
+    });
     await logAudit({
       req,
       accion: 'VERIFICACION_IDENTIDAD',

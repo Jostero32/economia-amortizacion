@@ -141,15 +141,29 @@ Porcentajes del ancho y alto de la tarjeta (proporción medida 1,557–1,568; fo
    nativa en Docker. La imagen se carga con `sharp().rotate()` y se compara a color. La detección
    reintenta con confianza 0,2 y luego con margen. Umbrales en uso 0,50 / 0,60.
 2. **MRZ en el servidor:** Tesseract.js con el modelo `mrz` (incluido en la imagen, con su licencia),
-   solo con los caracteres `A–Z 0–9 <`. Se exigen consenso de 2 lecturas, dígitos de control y
-   verificador de la cédula.
-3. **Captura en el navegador:** el reverso se captura cuando la MRZ valida en vivo y la nitidez es
-   ≥ 40; el anverso, cuando hay un rostro en la zona de la foto y la nitidez es suficiente.
+   solo con los caracteres `A–Z 0–9 <`. Se exigen dígitos de control y verificador de la cédula, con
+   consenso de 2 lecturas o una sola cuyo NUI coincida exactamente con la cédula registrada.
+3. **Captura en el navegador:** el reverso se captura con nitidez ≥ 40; la MRZ se lee al subirlo al
+   servidor. El anverso se captura cuando hay un rostro y la nitidez es suficiente.
 4. **Comparación de datos:** el NUI de la MRZ debe ser igual a la cédula registrada. Las fechas vienen
-   protegidas. El nombre se compara en formato MRZ con ≤ 2 diferencias. El sexo no se usa.
+   protegidas. Se comparan todas las palabras registradas, sin partículas: una letra de tolerancia,
+   dos para palabras de 7 o más letras y nombres cortados. El sexo no se usa.
 5. **Cédula antigua:** siempre a revisión del asesor.
 
-## 4. Limitaciones
+## 4. Prueba de vida (fase 3)
+
+Dos retos distintos elegidos por el servidor: giro a la izquierda, giro a la derecha o sonrisa. Cada
+fotograma debe mostrar un único rostro que corresponda a la selfie (distancia ≤ 0,60). Se compara
+con la selfie frontal: cambio de posición horizontal de la nariz / distancia entre ojos ≥ 0,15 en
+el sentido pedido, o aumento del ancho de la boca / distancia entre ojos ≥ 8 %. Son umbrales
+iniciales configurables (`IDENTITY_YAW_DELTA`, `IDENTITY_SMILE_DELTA`), enviados al navegador para
+guiar la captura y comprobados de nuevo en el servidor.
+
+Las pruebas usan puntos sintéticos y rostros simulados; falta calibrar con movimientos reales desde
+un celular por HTTPS y confirmar el signo del giro sobre imágenes sin espejo. No se han modificado
+los umbrales faciales 0,50 / 0,60 de la fase 0.
+
+## 5. Limitaciones
 
 - **Muestra pequeña:** 4 pares genuinos cédula↔rostro (más un control). Conviene recalibrar con al menos 10 personas y
   con selfies tomadas con la cámara de la app antes de confiar en la aprobación automática.

@@ -25,6 +25,7 @@ const AUTO_APPROVAL_CONTROLS = [
   'NOMBRE_COINCIDE',
   'MAYOR_EDAD',
   'CEDULA_VIGENTE',
+  'VIDA',
 ];
 
 const PENDING_DATA_MOTIVE = 'Un asesor revisará los datos de tu cédula.';

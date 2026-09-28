@@ -9,6 +9,7 @@ import Table from '../../components/Table';
 import { LoadingState } from '../../components/Spinner';
 import AuthImage from '../../components/identity/AuthImage';
 import IdentityBadge from '../../components/identity/IdentityBadge';
+import { CHALLENGE_LABELS } from '../../components/identity/liveness';
 import { formatDate, formatDateTime } from '../../utils/format';
 
 const FACE = {
@@ -116,6 +117,28 @@ export default function IdentityVerificationDetail() {
           <Photo verificationId={v.id} tipo="reverso" label="Reverso de la cédula" available={v.capturas.reverso} />
           <Photo verificationId={v.id} tipo="selfie" label="Selfie" available={v.capturas.selfie} />
         </div>
+      </Card>
+
+      <Card title="Prueba de vida" iconName="motion_photos_on">
+        {v.vidaCapturas > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Array.from({ length: v.vidaCapturas }, (_, index) => {
+              const result = v.vida?.resultados?.[index];
+              const reto = v.vida?.retos?.[index];
+              return (
+                <div key={index} className="space-y-2">
+                  <Photo verificationId={v.id} tipo={`vida-${index + 1}`} label={CHALLENGE_LABELS[reto] || `Captura ${index + 1}`} available />
+                  <p className="flex items-start gap-2 text-[13px]">
+                    <span aria-hidden="true" className={`material-symbols-outlined text-[18px] ${result?.ok ? 'text-emerald-600' : result?.ok === false ? 'text-rose-600' : 'text-gray-400'}`}>
+                      {result?.ok ? 'check_circle' : result?.ok === false ? 'cancel' : 'help'}
+                    </span>
+                    {result?.detalle || 'Captura sin resultado evaluado.'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : <p className="text-[13px] text-gray-600">No se realizó la prueba de vida. Revisa las capturas y los demás controles.</p>}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-space-md">

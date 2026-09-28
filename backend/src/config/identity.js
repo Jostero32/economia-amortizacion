@@ -16,6 +16,10 @@ module.exports = {
   FACE_MATCH_DISTANCE: number('IDENTITY_FACE_MATCH', 0.5),
   FACE_DOUBTFUL_DISTANCE: number('IDENTITY_FACE_DOUBTFUL', 0.6),
 
+  // Cambio respecto de la selfie frontal: giro relativo y aumento proporcional de la boca
+  YAW_DELTA: number('IDENTITY_YAW_DELTA', 0.15),
+  SMILE_DELTA: number('IDENTITY_SMILE_DELTA', 0.08),
+
   // Evaluaciones permitidas antes de pasar la verificación al asesor
   MAX_ATTEMPTS: number('IDENTITY_MAX_ATTEMPTS', 3),
 

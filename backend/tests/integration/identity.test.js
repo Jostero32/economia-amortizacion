@@ -24,9 +24,7 @@ const mrzService = require('../../src/services/identity/mrzService');
 const { CONSENT_VERSION } = require('../../src/config/identity');
 const { CreditType, Document, IdentityVerification, User } = require('../../src/models');
 const { initTestDatabase, seedCompleteData, generateTestToken } = require('../helpers/dbSetup');
-
-// Rostro simulado: la distancia entre face(a) y face(b) es |a − b|
-const face = (value) => ({ descriptor: [value, ...new Array(127).fill(0)], score: 0.9, faces: 1, box: {}, landmarks: [] });
+const { face } = require('../helpers/livenessFixtures');
 
 let photo;
 let seq = 0;
@@ -81,8 +79,11 @@ const upload = (token, id, side, fields = {}) => {
   Object.entries(fields).forEach(([name, value]) => req.field(name, value));
   return req.attach('foto', photo, `${side}.jpg`);
 };
-const sendSelfie = (token, id) => request(app)
-  .post(`/api/identity/${id}/selfie`).set(auth(token)).attach('selfie', photo, 'selfie.jpg');
+const sendSelfie = (token, id, frames = 0) => {
+  const req = request(app).post(`/api/identity/${id}/selfie`).set(auth(token)).attach('selfie', photo, 'selfie.jpg');
+  for (let i = 0; i < frames; i += 1) req.attach('vida', photo, `vida-${i + 1}.jpg`);
+  return req;
+};
 
 /**
  * Recorre el flujo hasta la selfie.
@@ -90,9 +91,9 @@ const sendSelfie = (token, id) => request(app)
  * @param {number} distance - Distancia entre el rostro de la cédula y el de la selfie
  * @param {Object} [options] - mrz: cambios en los datos leídos · antigua: cédula del modelo anterior
  */
-async function verify(client, distance, { mrz = {}, antigua = false } = {}) {
+async function verify(client, distance, { mrz = {}, antigua = false, vida = true, cumple = true, otraPersona = false } = {}) {
   const started = await start(client.token);
-  const { id } = started.body.data.verification;
+  const { id, retos } = started.body.data.verification;
   faceService.detectMainFace.mockResolvedValueOnce(face(0));
   await upload(client.token, id, 'anverso');
   if (antigua) {
@@ -102,7 +103,8 @@ async function verify(client, distance, { mrz = {}, antigua = false } = {}) {
     await upload(client.token, id, 'reverso');
   }
   faceService.detectMainFace.mockResolvedValueOnce(face(0)).mockResolvedValueOnce(face(distance));
-  const res = await sendSelfie(client.token, id);
+  if (vida) retos.forEach((reto) => faceService.detectMainFace.mockResolvedValueOnce(face(otraPersona ? distance + 0.9 : distance, cumple ? reto : undefined)));
+  const res = await sendSelfie(client.token, id, vida ? retos.length : 0);
   return { id, res };
 }
 
@@ -137,6 +139,9 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
     const first = await start(token);
     expect(first.status).toBe(201);
     expect(first.body.data.verification.estado).toBe('EN_CURSO');
+    expect(first.body.data.verification.retos).toHaveLength(2);
+    expect(new Set(first.body.data.verification.retos).size).toBe(2);
+    expect(first.body.data.verification.umbralesVida).toEqual({ giro: 0.15, sonrisa: 0.08 });
     const again = await start(token);
     expect(again.body.data.verification.id).toBe(first.body.data.verification.id);
   });
@@ -185,6 +190,43 @@ describe('Integración: verificación de identidad (/api/identity)', () => {
 
     const me = await request(app).get('/api/identity/me').set(auth(client.token));
     expect(me.body.data).toMatchObject({ verificada: true, puedeSolicitar: true });
+  });
+
+  test('sin fotogramas de vida pasa al asesor aunque rostro y datos coincidan', async () => {
+    const { res, id } = await verify(await newClient(), 0.3, { vida: false });
+    expect(res.body.data.resultado).toBe('EN_REVISION');
+    expect(res.body.data.verification.controles).toContainEqual(expect.objectContaining({ codigo: 'VIDA', ok: null }));
+    const saved = await IdentityVerification.findByPk(id);
+    expect(saved.vidaRutas).toEqual([]);
+    expect(saved.vida.superada).toBeNull();
+  });
+
+  test('sin movimiento pide reintentar y al agotar tres intentos pasa al asesor', async () => {
+    const client = await newClient();
+    for (let intento = 1; intento <= 3; intento += 1) {
+      const { res } = await verify(client, 0.3, { cumple: false });
+      expect(res.body.data.resultado).toBe(intento < 3 ? 'REINTENTAR' : 'EN_REVISION');
+      expect(res.body.data.verification.controles).toContainEqual(expect.objectContaining({ codigo: 'VIDA', ok: false }));
+    }
+  });
+
+  test('otra persona en los fotogramas obliga a reintentar', async () => {
+    const { res } = await verify(await newClient(), 0.3, { otraPersona: true });
+    expect(res.body.data.resultado).toBe('REINTENTAR');
+    expect(res.body.data.verification.motivos.join(' ')).toMatch(/no coincide con el de tu selfie/);
+  });
+
+  test('guarda los retos evaluados y protege las capturas de vida', async () => {
+    const owner = await newClient();
+    const other = await newClient();
+    const { id } = await verify(owner, 0.3);
+    const detail = await request(app).get(`/api/admin/identity-verifications/${id}`).set(auth(advisorToken));
+    expect(detail.body.data.verification).toMatchObject({ vidaCapturas: 2, vida: { superada: true } });
+    expect(detail.body.data.verification.vida.resultados.every((r) => r.ok)).toBe(true);
+    expect((await request(app).get(`/api/identity/${id}/archivos/vida-1`).set(auth(owner.token))).status).toBe(200);
+    expect((await request(app).get(`/api/identity/${id}/archivos/vida-2`).set(auth(advisorToken))).status).toBe(200);
+    expect((await request(app).get(`/api/identity/${id}/archivos/vida-1`).set(auth(other.token))).status).toBe(403);
+    expect((await request(app).get(`/api/identity/${id}/archivos/vida-3`).set(auth(owner.token))).status).toBe(404);
   });
 
   test('sin cédula registrada, la aprobación registra en la cuenta la cédula leída', async () => {

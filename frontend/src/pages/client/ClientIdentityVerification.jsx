@@ -12,12 +12,12 @@ import { safeReturnPath, useIdentityStatus } from '../../components/identity/ide
 const STEPS = [
   { key: 'anverso', label: 'Anverso de la cédula', icon: 'badge' },
   { key: 'reverso', label: 'Reverso de la cédula', icon: 'flip' },
-  { key: 'selfie', label: 'Selfie', icon: 'face' },
+  { key: 'selfie', label: 'Selfie y dos movimientos cortos', icon: 'face' },
 ];
 
 // Autorización para tratar datos personales y biométricos (LOPDP): qué, para qué, cómo y cuánto tiempo
 const CONSENT_POINTS = [
-  ['Qué datos', 'Las fotos de tu cédula (anverso y reverso), una selfie y los datos impresos en la cédula.'],
+  ['Qué datos', 'Las fotos de tu cédula (anverso y reverso), una selfie, las capturas de dos movimientos para la prueba de vida y los datos impresos en la cédula.'],
   ['Para qué', 'Únicamente para verificar que eres el titular de la cédula antes de solicitar un crédito o una inversión.'],
   ['Cómo', 'El análisis lo hace el sistema de FinanEcuador; tus fotos no se envían a servicios externos. Si el resultado no es concluyente, un asesor las revisa.'],
   ['Cuánto tiempo', 'Mientras mantengas una relación con la institución o lo exija la ley.'],
@@ -75,6 +75,8 @@ export default function ClientIdentityVerification() {
 
   const [step, setStep] = useState('intro');
   const [verificationId, setVerificationId] = useState(null);
+  const [retos, setRetos] = useState([]);
+  const [umbralesVida, setUmbralesVida] = useState(undefined);
   const [consent, setConsent] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState(null);
@@ -100,6 +102,11 @@ export default function ClientIdentityVerification() {
     try {
       const response = await identityService.start(status.consentimientoVersion);
       setVerificationId(response.data.verification.id);
+      setRetos(response.data.verification.retos || []);
+      setUmbralesVida(response.data.verification.umbralesVida);
+      setResult(null);
+      setBackRead(null);
+      setUnreadableBack(null);
       setWarning(null);
       setStep('anverso');
     } catch (err) {
@@ -140,8 +147,8 @@ export default function ClientIdentityVerification() {
       setSendingOld(false);
     }
   };
-  const onSelfie = async (file) => {
-    const response = await identityService.uploadSelfie(verificationId, file);
+  const onSelfie = async (file, vida) => {
+    const response = await identityService.uploadSelfie(verificationId, file, vida);
     setResult(response.data);
     setStep('resultado');
     reload();
@@ -213,7 +220,7 @@ export default function ClientIdentityVerification() {
                   <span className="text-gray-600">
                     {s.key === 'anverso' && 'El lado con tu foto.'}
                     {s.key === 'reverso' && 'El lado con las 3 líneas de letras y números.'}
-                    {s.key === 'selfie' && 'Una foto de tu rostro, mirando de frente.'}
+                    {s.key === 'selfie' && 'Mira de frente y sigue las indicaciones para girar o sonreír.'}
                   </span>
                 </li>
               ))}
@@ -289,13 +296,14 @@ export default function ClientIdentityVerification() {
               </Alert>
             )}
             <Controls controles={verification.controles} />
+            {error && <Alert type="error">{error}</Alert>}
             <div className="flex flex-wrap justify-end gap-2 pt-2">
               {result.resultado === 'REINTENTAR' && (
                 <>
                   <span className="self-center text-[12px] text-gray-500 mr-auto">
                     Te quedan {verification.intentosRestantes} intento(s).
                   </span>
-                  <Button variant="fintech" iconName="replay" onClick={() => { setResult(null); setWarning(null); setBackRead(null); setStep('anverso'); }}>
+                  <Button variant="fintech" iconName="replay" onClick={begin} loading={starting} loadingText="Iniciando...">
                     Intentar de nuevo
                   </Button>
                 </>
@@ -336,7 +344,7 @@ export default function ClientIdentityVerification() {
           </div>
         )}
         {step === 'reverso' && error && <Alert type="error" className="mt-3">{error}</Alert>}
-        {step === 'selfie' && <SelfieCapture onConfirm={onSelfie} />}
+        {step === 'selfie' && <SelfieCapture retos={retos} umbrales={umbralesVida} onConfirm={onSelfie} />}
       </Card>
       <div className="text-center">
         <Link to={volver || '/cliente'} className="text-[12px] text-gray-500 hover:underline">

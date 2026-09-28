@@ -268,16 +268,18 @@ todo coincide.
 
 **Objetivo:** comprobar que frente a la cámara hay una persona real que se mueve, no una foto.
 
-1. **Retos en el navegador:**
-   - 2 retos al azar entre "gira la cabeza a la izquierda", "gira a la derecha" y "sonríe";
+1. **Retos elegidos por el servidor y guiados en el navegador:**
+   - 2 retos distintos al azar entre "gira la cabeza a la izquierda", "gira a la derecha" y "sonríe",
+     renovados al iniciar o reanudar la verificación;
    - con los puntos faciales de face-api se estima el giro (posición de la nariz respecto a los
      ojos) y la sonrisa (ancho de la boca respecto a la distancia entre los ojos);
    - se captura un fotograma de cada reto cumplido y uno de frente;
-   - tiempo límite por reto y la opción de repetir.
+   - dos detecciones consecutivas antes de capturar, 15 segundos por reto y opción de repetir;
+   - vista en espejo para la persona, capturas sin espejo; un archivo subido omite los retos y va al asesor.
 2. **Verificación en el servidor** (`livenessService`):
    - cada fotograma debe tener un rostro de la misma persona que la selfie (distancia ≤ 0,60);
-   - el giro estimado debe cambiar en el sentido pedido: al menos 8° de diferencia con el fotograma
-     de frente;
+   - el desplazamiento horizontal de la nariz respecto al centro de los ojos, dividido por la distancia
+     entre ojos, debe cambiar al menos 0,15 en el sentido pedido respecto de la selfie frontal;
    - la sonrisa debe ensanchar la boca al menos un 8 %.
 3. **Reglas:** la aprobación automática exige la prueba de vida superada. Si falla, se reintenta. Si
    no se pudo hacer (sin cámara, por ejemplo al subir fotos), el caso va al asesor.
@@ -285,8 +287,13 @@ todo coincide.
 **Pruebas:**
 
 - **Unitarias:** estimación de giro y sonrisa con puntos faciales sintéticos; reglas.
-- **Punta a punta:** fotogramas de un rostro girado artificialmente para probar el camino completo.
-  La prueba con una persona real la hace el equipo con su propia cara.
+- **Integración:** sin fotogramas → asesor; foto inmóvil u otra persona → reintentar; tres fallos → asesor;
+  capturas ordenadas, almacenadas y accesibles solo al titular y al personal.
+- **Navegador:** detección simulada para probar los dos giros, sonrisa, tiempo agotado, repetición y
+  envío ordenado de archivos. Este recorrido prueba la interfaz, no la eficacia biométrica.
+- **Pendiente:** prueba con una persona real desde un celular por HTTPS. Confirmar el signo del giro
+  (izquierda de la persona → mayor desplazamiento horizontal de la nariz en la imagen sin espejo).
+  Los umbrales de movimiento son iniciales y todavía no se han calibrado con videos reales.
 
 ## Fase 4: métricas y cierre
 
@@ -309,6 +316,10 @@ todo coincide.
 
 ## Estado
 
+Validación de la fase 3: **313 pruebas en 24 suites** y build del frontend correctos. La prueba de
+cámara denegada en Chrome envió una selfie real sin fotogramas y obtuvo `EN_REVISION`, con `VIDA`
+pendiente. Esto verifica la alternativa de revisión manual, no una prueba de vida real.
+
 Validación de la fase 2 (28/09/2026): **296 pruebas en 23 suites** y build del frontend correctos.
 En Chrome, P2 y P3 quedaron aprobadas automáticamente (distancias 0,4419 y 0,4718); P3 usó el
 botón de captura de selfie porque la cámara simulada no activó la captura automática. La cédula
@@ -320,6 +331,6 @@ externas al repositorio.
 | --- | --- | --- |
 | 0 | Hecha | `751e914` |
 | 1 | Hecha | `cdbbb3e` |
-| 2 | Hecha | Commit «Leer la MRZ y aprobar la identidad automáticamente (fase 2)» |
-| 3 | Pendiente | |
+| 2 | Hecha | `6dc3abe` |
+| 3 | Implementada y probada automáticamente; validación presencial pendiente | Commit «Exigir dos movimientos para verificar la prueba de vida (fase 3)» |
 | 4 | Pendiente | |

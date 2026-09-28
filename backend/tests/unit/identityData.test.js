@@ -103,7 +103,7 @@ describe('Unitario: controles de los datos de la cédula', () => {
     tipoCedula: 'ELECTRONICA', datos, cedulaRegistrada: '1712345600', nombreRegistrado: 'Ana Prueba', cedulaEnOtraCuenta: false, today: TODAY,
   };
   const byCode = (controles) => Object.fromEntries(controles.map((c) => [c.codigo, c]));
-  const faceOk = ['ROSTRO_CEDULA', 'ROSTRO_SELFIE', 'ROSTRO_COINCIDE'].map((codigo) => ({ codigo, ok: true, detalle: codigo, siFalla: 'REINTENTO' }));
+  const faceOk = ['ROSTRO_CEDULA', 'ROSTRO_SELFIE', 'ROSTRO_COINCIDE', 'VIDA'].map((codigo) => ({ codigo, ok: true, detalle: codigo, siFalla: 'REINTENTO' }));
 
   test('con todo coincidente, las reglas aprueban automáticamente', () => {
     const controles = [...faceOk, ...dataControls(base)];
