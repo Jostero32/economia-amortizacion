@@ -5,6 +5,32 @@
 > **Contexto:** Simulación financiera basada en normativas y tasas del Banco Central del Ecuador (BCE) a Septiembre de 2026.  
 > **Arquitectura:** Backend y Frontend desacoplados, con un `docker-compose.yml` principal para ejecutar todo el sistema y archivos Compose individuales para desarrollo aislado.
 
+<p>
+  <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black" />
+  <img alt="Express" src="https://img.shields.io/badge/Express-Sequelize-000000?logo=express" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white" />
+  <img alt="TensorFlow.js" src="https://img.shields.io/badge/eKYC-face--api_·_Tesseract-FF6F00?logo=tensorflow&logoColor=white" />
+  <img alt="Jest" src="https://img.shields.io/badge/Jest-pruebas-C21325?logo=jest&logoColor=white" />
+</p>
+
+| Simulador de crédito | Panel de supervisión |
+|---|---|
+| ![Simulador de crédito](docs/img/simulador-credito.png) | ![Panel de administración](docs/img/admin-panel.png) |
+| **Simulador de inversión** | **Inicio** |
+| ![Simulador de inversión](docs/img/simulador-inversion.png) | ![Inicio](docs/img/inicio.png) |
+
+```mermaid
+flowchart LR
+    U((Cliente /<br/>asesor / admin)) --> N["frontend<br/>nginx + React (Vite)"]
+    N -->|"/api"| B["backend<br/>Express + Sequelize"]
+    B --> DB[("PostgreSQL")]
+    B --> UP[("uploads/<br/>expedientes y capturas")]
+    B --> K["eKYC<br/>MRZ con Tesseract ·<br/>rostro con face-api (TF.js)"]
+    B --> PDF["PDF de tablas<br/>de amortización (pdfkit)"]
+```
+
+<sub>Capturas del stack levantado con Docker y los usuarios de demostración de la semilla.</sub>
+
 ---
 
 ## 1. Estructura del Proyecto

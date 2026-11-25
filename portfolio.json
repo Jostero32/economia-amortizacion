@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "titulo": "FinanEcuador",
+  "resumen": "Simulador financiero para Ecuador: créditos con amortización francesa y alemana, inversiones a plazo fijo y ahorro programado con tasas del BCE, solicitudes con flujo de asesor y verificación de identidad (eKYC) con lectura de MRZ y comparación facial.",
+  "categorias": ["fullstack", "finanzas"],
+  "stack": ["React", "Vite", "Tailwind", "Express", "Sequelize", "PostgreSQL", "TensorFlow.js", "Tesseract", "Docker"],
+  "estado": "Desplegado (proyecto académico)",
+  "destacado": true,
+  "anio": 2026,
+  "rol": "Desarrollo full stack",
+  "portada": "docs/img/simulador-credito.png",
+  "capturas": ["docs/img/simulador-credito.png", "docs/img/simulador-inversion.png", "docs/img/admin-panel.png", "docs/img/inicio.png"],
+  "aspectos": [
+    "Amortización francesa y alemana con TEA, frecuencia de pago y abonos extraordinarios",
+    "Verificación de identidad: MRZ de la cédula, prueba de vida y distancia facial calibrada",
+    "Roles cliente, asesor y administrador con auditoría",
+    "Tasas y techos regulados por el BCE configurables"
+  ],
+  "demo": null
+}

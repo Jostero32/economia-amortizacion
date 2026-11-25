@@ -1,0 +1,12 @@
+{
+  "viewport": { "width": 1440, "height": 900 },
+  "colorScheme": "light",
+  "shots": [
+    { "name": "inicio", "url": "http://localhost:8095/" },
+    { "name": "simulador-credito", "url": "http://localhost:8095/creditos/simulador", "click": ["Simular"], "delay": 1200, "viewport": { "width": 1440, "height": 1180 } },
+    { "name": "simulador-inversion", "url": "http://localhost:8095/inversiones/simulador", "click": ["Simular"], "delay": 1200, "viewport": { "width": 1440, "height": 1180 } },
+    { "name": "login", "url": "http://localhost:8095/login", "click": ["Admin", "Iniciar sesión"], "delay": 1500 },
+    { "name": "admin-panel", "url": "http://localhost:8095/admin", "delay": 1500 },
+    { "name": "admin-solicitudes", "url": "http://localhost:8095/admin/solicitudes", "delay": 1500 }
+  ]
+}
